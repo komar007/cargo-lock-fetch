@@ -4,12 +4,16 @@ use std::{
     iter::once,
     path::Path,
     process::{Command, Stdio},
+    str::FromStr as _,
 };
 
 use anyhow::Context;
-use cargo_lock::{Lockfile, Name, Version};
+use cargo_lock::{
+    Lockfile, Name, Package, SourceId, Version,
+    package::{GitReference, SourceKind},
+};
 use itertools::{Either, Itertools};
-use log::info;
+use log::{info, warn};
 
 fn main() -> Result<(), anyhow::Error> {
     let lockfile = Lockfile::load("Cargo.lock").unwrap();
@@ -39,60 +43,104 @@ fn main() -> Result<(), anyhow::Error> {
         .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
         add_packages(
             dir.child(&batch_name),
-            batch_to_add.values().map(|p| Dependency::External {
-                name: &p.name,
-                version: &p.version,
-            }),
+            batch_to_add
+                .into_values()
+                .map(|p| Dependency::Real(Box::new(p))),
         )
         .with_context(|| format!("failed to run batch {batch_no}"))?;
         batch_no += 1;
         batches.push(batch_name);
     }
-    add_packages(
-        &dir,
-        batches.iter().map(|batch| Dependency::Internal {
-            name: batch,
-            path: batch,
-        }),
-    )
-    .context("failed to add sub-crate as dependency")?;
+    add_packages(&dir, batches.into_iter().map(Dependency::BatchSubCrate))
+        .context("failed to add sub-crate as dependency")?;
     run_cargo(&dir, ["fetch"]).context("failed to fetch packages")?;
     Ok(())
 }
 
-fn add_packages<'d>(
+fn add_packages(
     dir: impl AsRef<Path>,
-    deps: impl IntoIterator<Item = Dependency<'d>>,
+    deps: impl IntoIterator<Item = Dependency>,
 ) -> Result<(), anyhow::Error> {
-    let (external, internal): (Vec<_>, Vec<_>) = deps.into_iter().partition_map(|dep| match dep {
-        Dependency::External { name, version } => Either::Left(format!("{name}@={version}")),
-        Dependency::Internal { name, path } => Either::Right((name, path)),
-    });
+    let (default_registry, rest): (Vec<_>, Vec<_>) =
+        deps.into_iter().partition_map(|dep| match dep {
+            Dependency::Real(p) if p.source.as_ref().is_some_and(SourceId::is_default_registry) => {
+                Either::Left(format!("{}@={}", p.name, p.version))
+            }
+            Dependency::Real(p) => Either::Right(p),
+            Dependency::BatchSubCrate(name) => Either::Right(Box::new(Package {
+                name: Name::from_str(&name).expect("sub-crate's name should be correct"),
+                version: Version::new(0, 1, 0),
+                source: None,
+                checksum: None,
+                dependencies: vec![],
+                replace: None,
+            })),
+        });
 
-    if !external.is_empty() {
+    if !default_registry.is_empty() {
         let batch_add_args = once("add")
+            .chain(["--config", "net.git-fetch-with-cli=true"])
             .chain(once("--no-default-features"))
             .map(String::from)
-            .chain(external);
+            .chain(default_registry);
         run_cargo(&dir, batch_add_args)
             .context("failed to add a batch of external packages to cargo project")?;
     }
-    for (name, path) in internal {
-        run_cargo(&dir, ["add", name, "--path", path])
-            .context("failed to add a batch sub-crate to cargo project")?;
+    for p in &rest {
+        let name = p.name.as_str();
+        let args = match &p.source {
+            // Our own dummy sub-crate for a batch of crates, because original pakaages without
+            // source are filtered out just after parsing Cargo.toml.
+            None => vec![name, "--path", p.name.as_str()],
+            // Any other original dependency not from default registry
+            Some(source) => match source_to_cargo_add_args(p.name.as_str(), source) {
+                Some(args) => args,
+                None => {
+                    warn!(dependency_crate:serde = p; "could not add dependency crate");
+                    continue;
+                }
+            },
+        };
+        run_cargo(
+            &dir,
+            once("add")
+                .chain(["--config", "net.git-fetch-with-cli=true"])
+                .chain(once("--no-default-features"))
+                .chain(args),
+        )
+        .context("failed to add a batch sub-crate to cargo prokect")?;
     }
     Ok(())
 }
 
-enum Dependency<'a> {
-    External {
-        name: &'a Name,
-        version: &'a Version,
-    },
-    Internal {
-        name: &'a str,
-        path: &'a str,
-    },
+fn source_to_cargo_add_args<'a>(name: &'a str, source: &'a SourceId) -> Option<Vec<&'a str>> {
+    let uri = source.url().as_str();
+    let args = match source.kind() {
+        SourceKind::Git(git_reference) => {
+            let (ref_name, ref_val) = match (source.precise(), git_reference) {
+                (Some(precise), _) => ("--rev", precise),
+                (None, GitReference::Tag(t)) => ("--tag", t.as_str()),
+                (None, GitReference::Branch(branch)) => {
+                    warn!(
+                        name, source:serde, branch;
+                        "adding crate with no precise rev and branch source, this is not reproducible!"
+                    );
+                    ("--branch", uri)
+                }
+                (None, GitReference::Rev(r)) => ("--rev", r.as_str()),
+            };
+            vec![name, "--git", uri, ref_name, ref_val]
+        }
+        SourceKind::Path => vec![name, "--path", uri],
+        SourceKind::Registry | SourceKind::SparseRegistry => vec![name, "--registry", uri],
+        _ => return None,
+    };
+    Some(args)
+}
+
+enum Dependency {
+    Real(Box<Package>),
+    BatchSubCrate(String),
 }
 
 fn run_cargo<S>(
