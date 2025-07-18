@@ -14,7 +14,7 @@ use cargo_lock::{
     package::{GitReference, SourceKind},
 };
 use itertools::{Either, Itertools as _};
-use log::{info, warn};
+use log::{error, info, warn};
 
 fn main() -> Result<(), anyhow::Error> {
     let lockfile = Lockfile::load("Cargo.lock").unwrap();
@@ -96,10 +96,10 @@ fn add_packages(
             None => vec![name, "--path", p.name.as_str()],
             // Any other original dependency not from default registry
             Some(source) => match source_to_cargo_add_args(p.name.as_str(), source) {
-                Some(args) => args,
-                None => {
-                    warn!(dependency_crate:serde = p; "could not add dependency crate");
-                    continue;
+                Ok(args) => args,
+                Err(error @ SourceError::Unsupported(_)) => {
+                    error!(error:err, dependency_crate:serde = p; "unsupported crate source");
+                    Err(error).with_context(|| format!("failed to add crate {name}"))?
                 }
             },
         };
@@ -115,7 +115,10 @@ fn add_packages(
     Ok(())
 }
 
-fn source_to_cargo_add_args<'a>(name: &'a str, source: &'a SourceId) -> Option<Vec<&'a str>> {
+fn source_to_cargo_add_args<'a>(
+    name: &'a str,
+    source: &'a SourceId,
+) -> Result<Vec<&'a str>, SourceError> {
     let uri = source.url().as_str();
     let args = match source.kind() {
         SourceKind::Git(git_reference) => {
@@ -135,9 +138,15 @@ fn source_to_cargo_add_args<'a>(name: &'a str, source: &'a SourceId) -> Option<V
         }
         SourceKind::Path => vec![name, "--path", uri],
         SourceKind::Registry | SourceKind::SparseRegistry => vec![name, "--registry", uri],
-        _ => return None,
+        kind => return Err(SourceError::Unsupported(kind.clone())),
     };
-    Some(args)
+    Ok(args)
+}
+
+#[derive(thiserror::Error, Debug)]
+enum SourceError {
+    #[error("unsupported source {0:?}")]
+    Unsupported(SourceKind),
 }
 
 enum Dependency {
