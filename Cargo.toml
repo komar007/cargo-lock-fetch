@@ -7,4 +7,5 @@ edition = "2024"
 cargo-lock = "10.1.0"
 temp-dir = "0.1.16"
 anyhow = "1.0.98"
+itertools = "0.14.0"
 log = { version = "0.4.27", features = ["kv", "kv_serde"] }
