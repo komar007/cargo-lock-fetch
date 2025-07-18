@@ -23,11 +23,17 @@ fn main() -> Result<(), anyhow::Error> {
     run_cargo(&dir, ["init", ".", "--name", "fake", "--vcs", "none"])
         .context("failed to create main project")?;
 
-    let packages: Vec<_> = lockfile
-        .packages
-        .into_iter()
-        .filter_map(|p| p.source.is_some().then(|| (p.name.clone(), p)))
-        .collect();
+    let (packages, local): (Vec<_>, Vec<_>) = lockfile.packages.into_iter().partition_map(|p| {
+        if p.source.is_some() {
+            Either::Left((p.name.clone(), p))
+        } else {
+            Either::Right(p)
+        }
+    });
+    if local.len() > 1 {
+        warn!(crates:? = local; "a crate other than root crate has no source");
+    }
+
     let batches = batches::into_batches(packages);
     let batch_names = batches
         .enumerate()
