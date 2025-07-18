@@ -1,5 +1,6 @@
+mod batches;
+
 use std::{
-    collections::BTreeMap,
     ffi::OsStr,
     iter::once,
     path::Path,
@@ -12,7 +13,7 @@ use cargo_lock::{
     Lockfile, Name, Package, SourceId, Version,
     package::{GitReference, SourceKind},
 };
-use itertools::{Either, Itertools};
+use itertools::{Either, Itertools as _};
 use log::{info, warn};
 
 fn main() -> Result<(), anyhow::Error> {
@@ -22,36 +23,31 @@ fn main() -> Result<(), anyhow::Error> {
     run_cargo(&dir, ["init", ".", "--name", "fake", "--vcs", "none"])
         .context("failed to create main project")?;
 
-    let mut packages: Vec<_> = lockfile
+    let packages: Vec<_> = lockfile
         .packages
         .into_iter()
-        .filter(|p| p.source.is_some())
+        .filter_map(|p| p.source.is_some().then(|| (p.name.clone(), p)))
         .collect();
-    let mut batches = vec![];
-    let mut batch_no = 1;
-    while !packages.is_empty() {
-        let mut batch_to_add = BTreeMap::new();
-        packages = packages
-            .into_iter()
-            .filter_map(|p| batch_to_add.insert(p.name.clone(), p))
-            .collect();
-        let batch_name = format!("batch{batch_no}");
-        run_cargo(
-            &dir,
-            ["init", &batch_name, "--name", &batch_name, "--vcs", "none"],
-        )
-        .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
-        add_packages(
-            dir.child(&batch_name),
-            batch_to_add
-                .into_values()
-                .map(|p| Dependency::Real(Box::new(p))),
-        )
-        .with_context(|| format!("failed to run batch {batch_no}"))?;
-        batch_no += 1;
-        batches.push(batch_name);
-    }
-    add_packages(&dir, batches.into_iter().map(Dependency::BatchSubCrate))
+    let batches = batches::into_batches(packages);
+    let batch_names = batches
+        .enumerate()
+        .map(|(i, batch)| -> Result<_, anyhow::Error> {
+            let batch_no = i + 1;
+            let batch_name = format!("batch{batch_no}");
+            run_cargo(
+                &dir,
+                ["init", &batch_name, "--name", &batch_name, "--vcs", "none"],
+            )
+            .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
+            add_packages(
+                dir.child(&batch_name),
+                batch.into_iter().map(|p| Dependency::Real(Box::new(p))),
+            )
+            .with_context(|| format!("failed to run batch {batch_no}"))?;
+            Ok(batch_name)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    add_packages(&dir, batch_names.into_iter().map(Dependency::BatchSubCrate))
         .context("failed to add sub-crate as dependency")?;
     run_cargo(&dir, ["fetch"]).context("failed to fetch packages")?;
     Ok(())
