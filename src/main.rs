@@ -1,26 +1,42 @@
 mod batches;
+mod cli;
 
 use std::{
     ffi::OsStr,
-    iter::once,
+    iter::{empty, once},
     path::Path,
     process::{Command, Stdio},
     str::FromStr as _,
 };
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use cargo_lock::{
     Lockfile, Name, Package, SourceId, Version,
     package::{GitReference, SourceKind},
 };
+use clap::{CommandFactory, Parser as _, error::ErrorKind};
 use itertools::{Either, Itertools as _};
 use log::{error, info, warn};
 
-fn main() -> Result<(), anyhow::Error> {
-    let lockfile = Lockfile::load("Cargo.lock").unwrap();
+use cli::{CargoLockPrefetch, CargoLockPrefetchCli, Cli};
+
+fn main() {
+    let cli = Cli::parse();
+
+    let CargoLockPrefetch::LockPrefetch(sub) = cli.subcommand;
+    if let Err(error) = run(sub) {
+        CargoLockPrefetchCli::command()
+            .error(ErrorKind::Io, format!("{error:?}"))
+            .exit()
+    }
+}
+
+fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
+    let lockfile = Lockfile::load(&cli.lockfile_path)
+        .with_context(|| format!("could not load lock file {}", &cli.lockfile_path))?;
 
     let dir = temp_dir::TempDir::new()?;
-    run_cargo(&dir, ["init", ".", "--name", "fake", "--vcs", "none"])
+    run_cargo(&dir, "init", [".", "--name", "fake", "--vcs", "none"])
         .context("failed to create main project")?;
 
     let (packages, local): (Vec<_>, Vec<_>) = lockfile.packages.into_iter().partition_map(|p| {
@@ -42,7 +58,8 @@ fn main() -> Result<(), anyhow::Error> {
             let batch_name = format!("batch{batch_no}");
             run_cargo(
                 &dir,
-                ["init", &batch_name, "--name", &batch_name, "--vcs", "none"],
+                "init",
+                [&batch_name, "--name", &batch_name, "--vcs", "none"],
             )
             .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
             add_packages(
@@ -55,7 +72,17 @@ fn main() -> Result<(), anyhow::Error> {
         .collect::<Result<Vec<_>, _>>()?;
     add_packages(&dir, batch_names.into_iter().map(Dependency::BatchSubCrate))
         .context("failed to add sub-crate as dependency")?;
-    run_cargo(&dir, ["fetch"]).context("failed to fetch packages")?;
+    run_cargo(&dir, "fetch", [] as [&str; 0]).context("failed to fetch packages")?;
+    if let Some(vendor_dir) = cli.vendor_dir {
+        let absolute_path = std::env::current_dir()
+            .context("Could not determine current directory")?
+            .join(vendor_dir);
+        let absolute_path = absolute_path.to_str().ok_or_else(|| {
+            anyhow!("cannot use path {absolute_path:?} as cargo argument: not utf8")
+        })?;
+        run_cargo(&dir, "vendor", ["--versioned-dirs", absolute_path])
+            .context("failed to vendor packages")?;
+    }
     Ok(())
 }
 
@@ -80,12 +107,12 @@ fn add_packages(
         });
 
     if !default_registry.is_empty() {
-        let batch_add_args = once("add")
+        let batch_add_args = empty()
             .chain(["--config", "net.git-fetch-with-cli=true"])
             .chain(once("--no-default-features"))
             .map(String::from)
             .chain(default_registry);
-        run_cargo(&dir, batch_add_args)
+        run_cargo(&dir, "add", batch_add_args)
             .context("failed to add a batch of external packages to cargo project")?;
     }
     for p in &rest {
@@ -105,7 +132,8 @@ fn add_packages(
         };
         run_cargo(
             &dir,
-            once("add")
+            "add",
+            empty()
                 .chain(["--config", "net.git-fetch-with-cli=true"])
                 .chain(once("--no-default-features"))
                 .chain(args),
@@ -156,6 +184,7 @@ enum Dependency {
 
 fn run_cargo<S>(
     cwd: impl AsRef<Path>,
+    cargo_cmd: &str,
     args: impl IntoIterator<Item = S>,
 ) -> Result<(), anyhow::Error>
 where
@@ -165,14 +194,17 @@ where
     let cmd = cmd
         .stderr(Stdio::piped())
         .stdout(Stdio::null())
+        .arg(cargo_cmd)
         .args(args)
         .current_dir(cwd);
     info!(cmd:?; "running cargo");
-    let output = cmd.output().context("failed to run cargo")?;
+    let output = cmd.output().context("failed to invoke cargo")?;
     if !output.status.success() {
         let err =
             String::from_utf8(output.stderr).context("cargo returned non-utf8 error output")?;
-        Err(std::io::Error::other(format!("cargo failed: {err}")))?
+        Err(std::io::Error::other(format!(
+            "failed to run cargo {cargo_cmd}:\n{err}"
+        )))?
     }
     Ok(())
 }

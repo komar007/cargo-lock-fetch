@@ -8,5 +8,8 @@ cargo-lock = "10.1.0"
 temp-dir = "0.1.16"
 thiserror = "2.0.12"
 anyhow = "1.0.98"
+indoc = "2.0.6"
 itertools = "0.14.0"
+clap = { version = "4.5.41", features = ["derive"] }
+clap-cargo = "0.16.0"
 log = { version = "0.4.27", features = ["kv", "kv_serde"] }
