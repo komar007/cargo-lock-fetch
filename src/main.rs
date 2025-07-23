@@ -32,6 +32,8 @@ fn main() {
 }
 
 fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
+    env_logger::init();
+
     let lockfile = Lockfile::load(&cli.lockfile_path)
         .with_context(|| format!("could not load lock file {}", &cli.lockfile_path))?;
 
