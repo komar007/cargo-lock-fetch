@@ -35,17 +35,28 @@ pub struct CargoLockPrefetchCli {
         help = "Path to Cargo.lock"
     )]
     pub lockfile_path: String,
+
     #[arg(
         name = "vendor",
         long,
         name = "DIR",
+        id = "vendor",
         help = "Vendor all dependencies for a project locally"
     )]
     pub vendor_dir: Option<String>,
+
     #[arg(
         long,
         default_value = "false",
         help = "Do not remove temporary cargo project's directory, print its name to stderr"
     )]
     pub keep_tmp: bool,
+
+    #[arg(
+        long,
+        requires = "vendor",
+        default_value = "false",
+        help = "Always include version in subdir name, only valid with --vendor"
+    )]
+    pub versioned_dirs: bool,
 }

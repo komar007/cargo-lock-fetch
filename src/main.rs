@@ -110,7 +110,9 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         run_cargo(
             &dir,
             "vendor",
-            ["--frozen", "--versioned-dirs", absolute_path],
+            [absolute_path, "--frozen"]
+                .into_iter()
+                .chain(cli.versioned_dirs.then_some("--versioned-dirs")),
             true,
         )
         .context("failed to vendor packages")?;
