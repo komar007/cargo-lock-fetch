@@ -107,8 +107,13 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         let absolute_path = absolute_path.to_str().ok_or_else(|| {
             anyhow!("cannot use path {absolute_path:?} as cargo argument: not utf8")
         })?;
-        run_cargo(&dir, "vendor", ["--versioned-dirs", absolute_path], true)
-            .context("failed to vendor packages")?;
+        run_cargo(
+            &dir,
+            "vendor",
+            ["--frozen", "--versioned-dirs", absolute_path],
+            true,
+        )
+        .context("failed to vendor packages")?;
     }
     Ok(())
 }
