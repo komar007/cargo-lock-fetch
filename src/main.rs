@@ -50,8 +50,13 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         dir = dir.dont_delete_on_drop();
     }
 
-    run_cargo(&dir, "init", [".", "--name", "fake", "--vcs", "none"])
-        .context("failed to create main project")?;
+    run_cargo(
+        &dir,
+        "init",
+        [".", "--name", "fake", "--vcs", "none"],
+        false,
+    )
+    .context("failed to create main project")?;
 
     let (packages, local): (Vec<_>, Vec<_>) = lockfile.packages.into_iter().partition_map(|p| {
         if p.source.is_some() {
@@ -76,6 +81,7 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
                 &dir,
                 "init",
                 [&batch_name, "--name", &batch_name, "--vcs", "none"],
+                false,
             )
             .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
             add_packages(
@@ -93,7 +99,7 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         &mut registries,
     )
     .context("failed to add sub-crates as dependencies")?;
-    run_cargo(&dir, "fetch", [] as [&str; 0]).context("failed to fetch packages")?;
+    run_cargo(&dir, "fetch", [] as [&str; 0], false).context("failed to fetch packages")?;
     if let Some(vendor_dir) = cli.vendor_dir {
         let absolute_path = std::env::current_dir()
             .context("Could not determine current directory")?
@@ -101,7 +107,7 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         let absolute_path = absolute_path.to_str().ok_or_else(|| {
             anyhow!("cannot use path {absolute_path:?} as cargo argument: not utf8")
         })?;
-        run_cargo(&dir, "vendor", ["--versioned-dirs", absolute_path])
+        run_cargo(&dir, "vendor", ["--versioned-dirs", absolute_path], true)
             .context("failed to vendor packages")?;
     }
     Ok(())
@@ -262,14 +268,20 @@ fn run_cargo<S>(
     cwd: impl AsRef<Path>,
     cargo_cmd: &str,
     args: impl IntoIterator<Item = S>,
+    inherit_output: bool,
 ) -> Result<(), anyhow::Error>
 where
     S: AsRef<OsStr>,
 {
+    let (out_cfg, err_cfg) = if inherit_output {
+        (Stdio::inherit(), Stdio::inherit())
+    } else {
+        (Stdio::null(), Stdio::piped())
+    };
     let mut cmd = Command::new("cargo");
     let cmd = cmd
-        .stderr(Stdio::piped())
-        .stdout(Stdio::null())
+        .stdout(out_cfg)
+        .stderr(err_cfg)
         .arg(cargo_cmd)
         .args(args)
         .current_dir(cwd);
