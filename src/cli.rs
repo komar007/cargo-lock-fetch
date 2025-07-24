@@ -42,4 +42,10 @@ pub struct CargoLockPrefetchCli {
         help = "Vendor all dependencies for a project locally"
     )]
     pub vendor_dir: Option<String>,
+    #[arg(
+        long,
+        default_value = "false",
+        help = "Do not remove temporary cargo project's directory, print its name to stderr"
+    )]
+    pub keep_tmp: bool,
 }

@@ -40,7 +40,16 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
     let lockfile = Lockfile::load(&cli.lockfile_path)
         .with_context(|| format!("could not load lock file {}", &cli.lockfile_path))?;
 
-    let dir = temp_dir::TempDir::new()?;
+    let mut dir = temp_dir::TempDir::new()?;
+
+    if cli.keep_tmp {
+        eprintln!(
+            "project directory: {}",
+            dir.as_ref().to_str().expect("temp dir should be utf-8")
+        );
+        dir = dir.dont_delete_on_drop();
+    }
+
     run_cargo(&dir, "init", [".", "--name", "fake", "--vcs", "none"])
         .context("failed to create main project")?;
 
