@@ -2,8 +2,11 @@ mod batches;
 mod cli;
 
 use std::{
+    collections::BTreeMap,
     ffi::OsStr,
-    iter::{empty, once},
+    fs::OpenOptions,
+    io::Write as _,
+    iter::once,
     path::Path,
     process::{Command, Stdio},
     str::FromStr as _,
@@ -52,8 +55,10 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         warn!(crates:? = local; "a crate other than root crate has no source");
     }
 
-    let batches = batches::into_batches(packages);
+    let mut registries = BTreeMap::new();
+    let batches = batches::into_batches(packages).collect_vec();
     let batch_names = batches
+        .into_iter()
         .enumerate()
         .map(|(i, batch)| -> Result<_, anyhow::Error> {
             let batch_no = i + 1;
@@ -67,13 +72,18 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
             add_packages(
                 dir.child(&batch_name),
                 batch.into_iter().map(|p| Dependency::Real(Box::new(p))),
+                &mut registries,
             )
-            .with_context(|| format!("failed to run batch {batch_no}"))?;
+            .with_context(|| format!("failed to add packages for batch {batch_no}"))?;
             Ok(batch_name)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    add_packages(&dir, batch_names.into_iter().map(Dependency::BatchSubCrate))
-        .context("failed to add sub-crate as dependency")?;
+    add_packages(
+        &dir,
+        batch_names.into_iter().map(Dependency::BatchSubCrate),
+        &mut registries,
+    )
+    .context("failed to add sub-crates as dependencies")?;
     run_cargo(&dir, "fetch", [] as [&str; 0]).context("failed to fetch packages")?;
     if let Some(vendor_dir) = cli.vendor_dir {
         let absolute_path = std::env::current_dir()
@@ -91,83 +101,138 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
 fn add_packages(
     dir: impl AsRef<Path>,
     deps: impl IntoIterator<Item = Dependency>,
+    registries: &mut BTreeMap<String, String>,
 ) -> Result<(), anyhow::Error> {
-    let (default_registry, rest): (Vec<_>, Vec<_>) =
-        deps.into_iter().partition_map(|dep| match dep {
-            Dependency::Real(p) if p.source.as_ref().is_some_and(SourceId::is_default_registry) => {
-                Either::Left(format!("{}@={}", p.name, p.version))
-            }
-            Dependency::Real(p) => Either::Right(p),
-            Dependency::BatchSubCrate(name) => Either::Right(Box::new(Package {
+    let deps = deps
+        .into_iter()
+        .map(|dep| match dep {
+            Dependency::Real(p) => p,
+            Dependency::BatchSubCrate(name) => Box::new(Package {
                 name: Name::from_str(&name).expect("sub-crate's name should be correct"),
-                version: Version::new(0, 1, 0),
+                version: Version::new(0, 0, 0),
                 source: None,
                 checksum: None,
                 dependencies: vec![],
                 replace: None,
-            })),
-        });
+            }),
+        })
+        .collect_vec();
 
-    if !default_registry.is_empty() {
-        let batch_add_args = empty()
-            .chain(["--config", "net.git-fetch-with-cli=true"])
-            .chain(once("--no-default-features"))
-            .map(String::from)
-            .chain(default_registry);
-        run_cargo(&dir, "add", batch_add_args)
-            .context("failed to add a batch of external packages to cargo project")?;
-    }
-    for p in &rest {
+    let entries: Vec<_> = deps.iter().map(|p| -> Result<_, anyhow::Error> {
         let name = p.name.as_str();
-        let args = match &p.source {
+        match &p.source {
             // Our own dummy sub-crate for a batch of crates, because original pakaages without
             // source are filtered out just after parsing Cargo.toml.
-            None => vec![name, "--path", p.name.as_str()],
+            None => Ok(format!(r#"{name} = {{ path = "{path}" }}"#, path = p.name)),
             // Any other original dependency not from default registry
-            Some(source) => match source_to_cargo_add_args(p.name.as_str(), source) {
-                Ok(args) => args,
-                Err(error @ SourceError::Unsupported(_)) => {
-                    error!(error:err, dependency_crate:serde = p; "unsupported crate source");
-                    Err(error).with_context(|| format!("failed to add crate {name}"))?
+            Some(source) => {
+                match source_to_dependency_entry(p.name.as_str(), source, &p.version.to_string(), registries) {
+                    Ok(args) => Ok(args),
+                    Err(error @ SourceError::Unsupported(_)) => {
+                        error!(error:err, dependency_crate:serde = p; "unsupported crate source");
+                        Err(error).with_context(|| format!("failed to add crate {name}"))?
+                    }
                 }
-            },
-        };
-        run_cargo(
-            &dir,
-            "add",
-            empty()
-                .chain(["--config", "net.git-fetch-with-cli=true"])
-                .chain(once("--no-default-features"))
-                .chain(args),
-        )
-        .context("failed to add a batch sub-crate to cargo prokect")?;
-    }
+            }
+        }
+    }).try_collect()?;
+    write_registries(&dir, registries).context("Failed to write registries")?;
+    write_dependencies(&dir, &entries).context("Failed to write dependencies")?;
     Ok(())
 }
 
-fn source_to_cargo_add_args<'a>(
-    name: &'a str,
-    source: &'a SourceId,
-) -> Result<Vec<&'a str>, SourceError> {
+fn write_registries(
+    dir: impl AsRef<Path>,
+    registries: &BTreeMap<String, String>,
+) -> Result<(), anyhow::Error> {
+    let registries_section = once("[registries]".to_string())
+        .chain(
+            registries
+                .iter()
+                .map(|(url, name)| format!("{name} = {{ index = \"{url}\" }}")),
+        )
+        .join("\n");
+    let _ = std::fs::create_dir(dir.as_ref().join(".cargo"));
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(dir.as_ref().join(".cargo/config.toml"))
+        .with_context(|| {
+            format!(
+                "Failed to open .cargo/config.toml in {:?}",
+                dir.as_ref().as_os_str()
+            )
+        })?;
+    file.write_all(registries_section.as_bytes())
+        .and_then(|()| file.write_all(b"\n"))
+        .with_context(|| {
+            format!(
+                "Failed to write .cargo/config.toml in {:?}",
+                dir.as_ref().as_os_str()
+            )
+        })
+}
+
+fn write_dependencies(dir: impl AsRef<Path>, entries: &[String]) -> Result<(), anyhow::Error> {
+    let mut file = OpenOptions::new()
+        .append(true)
+        .open(dir.as_ref().join("Cargo.toml"))
+        .with_context(|| format!("Failed to open Cargo.toml {:?}", dir.as_ref().as_os_str()))?;
+    file.write_all(entries.join("\n").as_bytes())
+        .and_then(|()| file.write_all(b"\n"))
+        .with_context(|| {
+            format!(
+                "Failed to append to Cargo.toml in {:?}",
+                dir.as_ref().as_os_str()
+            )
+        })
+}
+
+fn source_to_dependency_entry(
+    name: &str,
+    source: &SourceId,
+    version: &str,
+    registries: &mut BTreeMap<String, String>,
+) -> Result<String, SourceError> {
     let uri = source.url().as_str();
     let args = match source.kind() {
         SourceKind::Git(git_reference) => {
-            let (ref_name, ref_val) = match (source.precise(), git_reference) {
-                (Some(precise), _) => ("--rev", precise),
-                (None, GitReference::Tag(t)) => ("--tag", t.as_str()),
+            let (ref_type, ref_val) = match (source.precise(), git_reference) {
+                (Some(precise), _) => ("rev", precise),
+                (None, GitReference::Tag(t)) => ("tag", t.as_str()),
                 (None, GitReference::Branch(branch)) => {
                     warn!(
                         name, source:serde, branch;
                         "adding crate with no precise rev and branch source, this is not reproducible!"
                     );
-                    ("--branch", uri)
+                    ("branch", uri)
                 }
-                (None, GitReference::Rev(r)) => ("--rev", r.as_str()),
+                (None, GitReference::Rev(r)) => ("rev", r.as_str()),
             };
-            vec![name, "--git", uri, ref_name, ref_val]
+            format!(
+                r#"{name} = {{ git = "{uri}", {ref_type} = "{ref_val}", default-features = false }}"#
+            )
         }
-        SourceKind::Path => vec![name, "--path", uri],
-        SourceKind::Registry | SourceKind::SparseRegistry => vec![name, "--registry", uri],
+        SourceKind::Path => format!(r#"{name} = {{ path = "{uri}", default-features = false }}"#),
+        SourceKind::Registry | SourceKind::SparseRegistry => {
+            let num = registries.len() + 1;
+            let registry_uri = [
+                (if *source.kind() == SourceKind::Registry {
+                    "registry"
+                } else {
+                    "sparse"
+                }),
+                uri,
+            ]
+            .join("+");
+            let reg = registries
+                .entry(registry_uri)
+                .or_insert_with(|| format!("reg{num}"));
+            format!(
+                r#"{name} = {{ version = "={version}", registry = "{reg}", default-features = false }}"#
+            )
+        }
         kind => return Err(SourceError::Unsupported(kind.clone())),
     };
     Ok(args)
