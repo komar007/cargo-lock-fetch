@@ -5,7 +5,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     fs::OpenOptions,
-    io::Write as _,
+    io::{Read, Write as _},
     iter::once,
     path::Path,
     process::{Command, Stdio},
@@ -20,6 +20,7 @@ use cargo_lock::{
 use clap::{CommandFactory, Parser as _, error::ErrorKind};
 use itertools::{Either, Itertools as _};
 use log::{error, info, warn};
+use toml_edit::DocumentMut;
 
 use cli::{CargoLockPrefetch, CargoLockPrefetchCli, Cli};
 
@@ -142,24 +143,27 @@ fn add_packages(
 
     let entries: Vec<_> = deps.iter().map(|p| -> Result<_, anyhow::Error> {
         let name = p.name.as_str();
-        match &p.source {
+        let spec = match &p.source {
             // Our own dummy sub-crate for a batch of crates, because original pakaages without
             // source are filtered out just after parsing Cargo.toml.
-            None => Ok(format!(r#"{name} = {{ path = "{path}" }}"#, path = p.name)),
+            None => Ok(
+                toml_edit::Table::from_iter(once(("path", p.name.as_str())))
+            ),
             // Any other original dependency not from default registry
             Some(source) => {
                 match source_to_dependency_entry(p.name.as_str(), source, &p.version.to_string(), registries) {
-                    Ok(args) => Ok(args),
+                    Ok(spec) => Ok(spec),
                     Err(error @ SourceError::Unsupported(_)) => {
                         error!(error:err, dependency_crate:serde = p; "unsupported crate source");
                         Err(error).with_context(|| format!("failed to add crate {name}"))?
                     }
                 }
             }
-        }
+        };
+        spec.map(|s| (name, s))
     }).try_collect()?;
     write_registries(&dir, registries).context("Failed to write registries")?;
-    write_dependencies(&dir, &entries).context("Failed to write dependencies")?;
+    write_dependencies(&dir, entries).context("Failed to write dependencies")?;
     Ok(())
 }
 
@@ -167,13 +171,15 @@ fn write_registries(
     dir: impl AsRef<Path>,
     registries: &BTreeMap<String, String>,
 ) -> Result<(), anyhow::Error> {
-    let registries_section = once("[registries]".to_string())
-        .chain(
-            registries
-                .iter()
-                .map(|(url, name)| format!("{name} = {{ index = \"{url}\" }}")),
-        )
-        .join("\n");
+    use toml_edit::{DocumentMut, Table};
+
+    let registries = Table::from_iter(
+        registries
+            .iter()
+            .map(|(url, name)| (name, Table::from_iter(once(("index", url))))),
+    );
+    let config: DocumentMut = Table::from_iter(once(("registries", registries))).into();
+
     let _ = std::fs::create_dir(dir.as_ref().join(".cargo"));
     let mut file = OpenOptions::new()
         .create(true)
@@ -186,7 +192,7 @@ fn write_registries(
                 dir.as_ref().as_os_str()
             )
         })?;
-    file.write_all(registries_section.as_bytes())
+    file.write_all(config.to_string().as_bytes())
         .and_then(|()| file.write_all(b"\n"))
         .with_context(|| {
             format!(
@@ -196,12 +202,39 @@ fn write_registries(
         })
 }
 
-fn write_dependencies(dir: impl AsRef<Path>, entries: &[String]) -> Result<(), anyhow::Error> {
-    let mut file = OpenOptions::new()
-        .append(true)
+fn write_dependencies(
+    dir: impl AsRef<Path>,
+    entries: Vec<(&str, toml_edit::Table)>,
+) -> Result<(), anyhow::Error> {
+    use toml_edit::Table;
+
+    let mut ro = OpenOptions::new()
+        .read(true)
         .open(dir.as_ref().join("Cargo.toml"))
         .with_context(|| format!("Failed to open Cargo.toml {:?}", dir.as_ref().as_os_str()))?;
-    file.write_all(entries.join("\n").as_bytes())
+    let mut cargo = String::new();
+    ro.read_to_string(&mut cargo).with_context(|| {
+        format!(
+            "Could not read from Cargo.toml in {:?}",
+            dir.as_ref().as_os_str()
+        )
+    })?;
+
+    let mut cargo =
+        DocumentMut::from_str(&cargo).expect("Cargo.toml created by cargo should be valid TOML");
+    cargo["dependencies"] = Table::from_iter(entries).into();
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(dir.as_ref().join("Cargo.toml"))
+        .with_context(|| {
+            format!(
+                "Failed to open Cargo.toml in {:?}",
+                dir.as_ref().as_os_str()
+            )
+        })?;
+    file.write_all(cargo.to_string().as_bytes())
         .and_then(|()| file.write_all(b"\n"))
         .with_context(|| {
             format!(
@@ -216,9 +249,11 @@ fn source_to_dependency_entry(
     source: &SourceId,
     version: &str,
     registries: &mut BTreeMap<String, String>,
-) -> Result<String, SourceError> {
+) -> Result<toml_edit::Table, SourceError> {
+    use toml_edit::{Table, value as v};
+
     let uri = source.url().as_str();
-    let args = match source.kind() {
+    let mut entry = match source.kind() {
         SourceKind::Git(git_reference) => {
             let (ref_type, ref_val) = match (source.precise(), git_reference) {
                 (Some(precise), _) => ("rev", precise),
@@ -232,11 +267,9 @@ fn source_to_dependency_entry(
                 }
                 (None, GitReference::Rev(r)) => ("rev", r.as_str()),
             };
-            format!(
-                r#"{name} = {{ git = "{uri}", {ref_type} = "{ref_val}", default-features = false }}"#
-            )
+            Table::from_iter([("git", v(uri)), (ref_type, v(ref_val))])
         }
-        SourceKind::Path => format!(r#"{name} = {{ path = "{uri}", default-features = false }}"#),
+        SourceKind::Path => Table::from_iter([("path", v(uri))]),
         SourceKind::Registry | SourceKind::SparseRegistry => {
             let num = registries.len() + 1;
             let registry_uri = [
@@ -251,13 +284,15 @@ fn source_to_dependency_entry(
             let reg = registries
                 .entry(registry_uri)
                 .or_insert_with(|| format!("reg{num}"));
-            format!(
-                r#"{name} = {{ version = "={version}", registry = "{reg}", default-features = false }}"#
-            )
+            Table::from_iter([
+                ("version", v(format!("={version}"))),
+                ("registry", v(&*reg)),
+            ])
         }
         kind => return Err(SourceError::Unsupported(kind.clone())),
     };
-    Ok(args)
+    entry["default-features"] = v(false);
+    Ok(entry)
 }
 
 #[derive(thiserror::Error, Debug)]
