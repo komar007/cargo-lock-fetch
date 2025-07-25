@@ -55,6 +55,14 @@ pub struct CargoLockPrefetchCli {
 
     #[arg(
         long,
+        short,
+        default_value = "false",
+        help = "Do not print any messages, even errors"
+    )]
+    pub quiet: bool,
+
+    #[arg(
+        long,
         default_value = "false",
         help = "Do not remove temporary cargo project's directory, print its name to stderr"
     )]

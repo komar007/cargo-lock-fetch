@@ -8,7 +8,7 @@ use std::{
     ffi::OsStr,
     iter::once,
     path::Path,
-    process::{Command, Stdio},
+    process::{Command, ExitCode, Stdio},
     str::FromStr as _,
 };
 
@@ -23,15 +23,20 @@ use log::{error, info, warn};
 
 use cli::{CargoLockPrefetch, CargoLockPrefetchCli, Cli};
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let CargoLockPrefetch::LockPrefetch(sub) = cli.subcommand;
+    let quiet = sub.quiet;
     if let Err(error) = run(sub) {
+        if quiet {
+            return 2.into();
+        }
         CargoLockPrefetchCli::command()
             .error(ErrorKind::Io, format!("{error:?}"))
             .exit()
     }
+    0.into()
 }
 
 fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
@@ -43,10 +48,12 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
     let mut dir = temp_dir::TempDir::new()?;
 
     if cli.keep_tmp {
-        eprintln!(
-            "project directory: {}",
-            dir.as_ref().to_str().expect("temp dir should be utf-8")
-        );
+        if !cli.quiet {
+            eprintln!(
+                "project directory: {}",
+                dir.as_ref().to_str().expect("temp dir should be utf-8")
+            );
+        }
         dir = dir.dont_delete_on_drop();
     }
 
@@ -55,6 +62,7 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         "init",
         [".", "--name", "fake", "--vcs", "none"],
         false,
+        cli.quiet,
     )
     .context("failed to create main project")?;
 
@@ -82,6 +90,7 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
                 "init",
                 [&batch_name, "--name", &batch_name, "--vcs", "none"],
                 false,
+                cli.quiet,
             )
             .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
             add_packages(
@@ -99,7 +108,8 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         &mut registries,
     )
     .context("failed to add sub-crates as dependencies")?;
-    run_cargo(&dir, "fetch", [] as [&str; 0], false).context("failed to fetch packages")?;
+    run_cargo(&dir, "fetch", [] as [&str; 0], false, cli.quiet)
+        .context("failed to fetch packages")?;
     if let Some(vendor_dir) = cli.vendor_dir {
         let absolute_path = std::env::current_dir()
             .context("Could not determine current directory")?
@@ -114,6 +124,7 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
                 .into_iter()
                 .chain(cli.versioned_dirs.then_some("--versioned-dirs")),
             true,
+            cli.quiet,
         )
         .context("failed to vendor packages")?;
     }
@@ -231,6 +242,7 @@ fn run_cargo<S>(
     cargo_cmd: &str,
     args: impl IntoIterator<Item = S>,
     inherit_output: bool,
+    quiet: bool,
 ) -> Result<(), anyhow::Error>
 where
     S: AsRef<OsStr>,
@@ -247,6 +259,9 @@ where
         .arg(cargo_cmd)
         .args(args)
         .current_dir(cwd);
+    if quiet {
+        cmd.arg("-q");
+    }
     info!(cmd:?; "running cargo");
     let output = cmd.output().context("failed to invoke cargo")?;
     if !output.status.success() {
