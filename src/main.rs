@@ -22,12 +22,12 @@ use itertools::{Either, Itertools as _};
 use log::{error, info, warn};
 use unwrap_infallible::UnwrapInfallible as _;
 
-use cli::{CargoLockPrefetch, CargoLockPrefetchCli, Cli};
+use cli::{CargoLockFetch, CargoLockFetchCli, Cli};
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    let CargoLockPrefetch::LockPrefetch(sub) = cli.subcommand;
+    let CargoLockFetch::LockFetch(sub) = cli.subcommand;
     if sub.keep_tmp && sub.tmp_dir.is_some() {
         exit_cli_error(
             &sub,
@@ -41,14 +41,14 @@ fn main() -> ExitCode {
     0.into()
 }
 
-fn exit_cli_error(cli: &CargoLockPrefetchCli, kind: ErrorKind, msg: &str) -> ! {
+fn exit_cli_error(cli: &CargoLockFetchCli, kind: ErrorKind, msg: &str) -> ! {
     if cli.quiet {
         std::process::exit(2);
     }
-    CargoLockPrefetchCli::command().error(kind, msg).exit()
+    CargoLockFetchCli::command().error(kind, msg).exit()
 }
 
-fn run(cli: &CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
+fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
     env_logger::init();
 
     let lockfile = Lockfile::load(&cli.lockfile_path)

@@ -26,9 +26,9 @@ cd - > /dev/null || exit 2
 rm -fr "$D/fake"
 
 t0=$(date +%s%N)
-cargo -q run -- lock-prefetch -q --lockfile-path "$D/Cargo.lock" --vendor "$D/vendor.actual/" --versioned-dirs
+cargo -q run -- lock-fetch -q --lockfile-path "$D/Cargo.lock" --vendor "$D/vendor.actual/" --versioned-dirs
 t1=$(date +%s%N)
-t_prefetch=$((t1-t0))
+t_fetch=$((t1-t0))
 
 if diff -Naur "$D/vendor.expected/" "$D/vendor.actual/"; then
 	echo success
@@ -39,4 +39,4 @@ fi
 
 echo "vendored $(find "$D/vendor.actual" -maxdepth 1 -type d | wc -l) crates"
 
-echo t_cargo=$((t_cargo/1000000))ms t_prefetch=$((t_prefetch/1000000))ms
+echo t_cargo=$((t_cargo/1000000))ms t_fetch=$((t_fetch/1000000))ms

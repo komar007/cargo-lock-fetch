@@ -9,26 +9,26 @@ use indoc::indoc;
 )]
 pub struct Cli {
     #[command(subcommand)]
-    pub subcommand: CargoLockPrefetch,
+    pub subcommand: CargoLockFetch,
 }
 
 #[derive(clap::Subcommand, Debug)]
-pub enum CargoLockPrefetch {
-    LockPrefetch(CargoLockPrefetchCli),
+pub enum CargoLockFetch {
+    LockFetch(CargoLockFetchCli),
 }
 
 #[derive(Debug, clap::Parser)]
 #[command(
-    name = "cargo lock-prefetch",
+    name = "cargo lock-fetch",
     version,
     styles = CLAP_STYLING,
-    about = "Prefetch crate dependencies from Cargo.lock",
+    about = "Fetch crate dependencies from Cargo.lock",
     after_help = indoc! {"
-        This cargo plugin prefetches and vendors dependencies without accessing any
+        This cargo plugin fetches and vendors dependencies without accessing any
         Cargo.toml files.
     "}
 )]
-pub struct CargoLockPrefetchCli {
+pub struct CargoLockFetchCli {
     #[arg(
         long,
         value_name = "PATH",

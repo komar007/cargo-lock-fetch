@@ -80,7 +80,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo-lock-prefetch"
+name = "cargo-lock-fetch"
 version = "0.1.0"
 dependencies = [
  "anyhow",
