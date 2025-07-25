@@ -19,7 +19,7 @@ use cargo_lock::{
 };
 use clap::{CommandFactory, Parser as _, error::ErrorKind};
 use itertools::{Either, Itertools as _};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use unwrap_infallible::UnwrapInfallible as _;
 
 use cli::{CargoLockFetch, CargoLockFetchCli, Cli};
@@ -261,6 +261,17 @@ fn run_cargo<S>(
 where
     S: AsRef<OsStr>,
 {
+    let c = std::env::var("CARGO");
+    let cargo_bin = c
+        .as_ref()
+        .map(AsRef::as_ref)
+        .inspect_err(|error| {
+            warn!(error:err = **error; "could not retrieve $CARGO, calling cargo directly");
+        })
+        .inspect(|cargo| {
+            debug!(cargo; "calling $CARGO");
+        })
+        .unwrap_or("cargo");
     if !cwd.as_ref().is_dir() {
         let dir = cwd.as_ref().as_os_str();
         Err(if cwd.as_ref().exists() {
@@ -274,7 +285,7 @@ where
     } else {
         (Stdio::null(), Stdio::piped())
     };
-    let mut cmd = Command::new("cargo");
+    let mut cmd = Command::new(cargo_bin);
     let cmd = cmd
         .stdout(out_cfg)
         .stderr(err_cfg)
