@@ -16,3 +16,4 @@ log = { version = "0.4.27", features = ["kv", "kv_serde"] }
 temp-dir = "0.1.16"
 thiserror = "2.0.12"
 toml_edit = "0.23.2"
+unwrap-infallible = "0.1.5"

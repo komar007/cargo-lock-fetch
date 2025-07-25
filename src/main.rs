@@ -7,7 +7,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsStr,
     iter::once,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
     str::FromStr as _,
 };
@@ -20,6 +20,7 @@ use cargo_lock::{
 use clap::{CommandFactory, Parser as _, error::ErrorKind};
 use itertools::{Either, Itertools as _};
 use log::{error, info, warn};
+use unwrap_infallible::UnwrapInfallible as _;
 
 use cli::{CargoLockPrefetch, CargoLockPrefetchCli, Cli};
 
@@ -27,38 +28,50 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let CargoLockPrefetch::LockPrefetch(sub) = cli.subcommand;
-    let quiet = sub.quiet;
-    if let Err(error) = run(sub) {
-        if quiet {
-            return 2.into();
-        }
-        CargoLockPrefetchCli::command()
-            .error(ErrorKind::Io, format!("{error:?}"))
-            .exit()
+    if sub.keep_tmp && sub.tmp_dir.is_some() {
+        exit_cli_error(
+            &sub,
+            ErrorKind::ArgumentConflict,
+            "arguments --keep-tmp and --tmp-dir are mutually exclusive",
+        );
+    }
+    if let Err(error) = run(&sub) {
+        exit_cli_error(&sub, ErrorKind::Io, &format!("{error:?}"));
     }
     0.into()
 }
 
-fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
+fn exit_cli_error(cli: &CargoLockPrefetchCli, kind: ErrorKind, msg: &str) -> ! {
+    if cli.quiet {
+        std::process::exit(2);
+    }
+    CargoLockPrefetchCli::command().error(kind, msg).exit()
+}
+
+fn run(cli: &CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
     env_logger::init();
 
     let lockfile = Lockfile::load(&cli.lockfile_path)
         .with_context(|| format!("could not load lock file {}", &cli.lockfile_path))?;
 
-    let mut dir = temp_dir::TempDir::new()?;
-
-    if cli.keep_tmp {
-        if !cli.quiet {
-            eprintln!(
-                "project directory: {}",
-                dir.as_ref().to_str().expect("temp dir should be utf-8")
-            );
+    let dir: Box<dyn AsRef<Path>> = if let Some(ref dir) = cli.tmp_dir {
+        Box::new(PathBuf::from_str(dir).unwrap_infallible()) as _
+    } else {
+        let mut dir = temp_dir::TempDir::new()?;
+        if cli.keep_tmp {
+            if !cli.quiet {
+                eprintln!(
+                    "project directory: {}",
+                    dir.as_ref().to_str().expect("temp dir should be utf-8")
+                );
+            }
+            dir = dir.dont_delete_on_drop();
         }
-        dir = dir.dont_delete_on_drop();
-    }
+        Box::new(dir) as _
+    };
 
     run_cargo(
-        &dir,
+        dir.as_ref(),
         "init",
         [".", "--name", "fake", "--vcs", "none"],
         false,
@@ -86,15 +99,16 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
             let batch_no = i + 1;
             let batch_name = format!("batch{batch_no}");
             run_cargo(
-                &dir,
+                dir.as_ref(),
                 "init",
                 [&batch_name, "--name", &batch_name, "--vcs", "none"],
                 false,
                 cli.quiet,
             )
             .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
+            let child = dir.as_ref().as_ref().join(&batch_name);
             add_packages(
-                dir.child(&batch_name),
+                child,
                 batch.into_iter().map(|p| Dependency::Real(Box::new(p))),
                 &mut registries,
             )
@@ -103,14 +117,14 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     add_packages(
-        &dir,
+        dir.as_ref(),
         batch_names.into_iter().map(Dependency::BatchSubCrate),
         &mut registries,
     )
     .context("failed to add sub-crates as dependencies")?;
-    run_cargo(&dir, "fetch", [] as [&str; 0], false, cli.quiet)
+    run_cargo(dir.as_ref(), "fetch", [] as [&str; 0], false, cli.quiet)
         .context("failed to fetch packages")?;
-    if let Some(vendor_dir) = cli.vendor_dir {
+    if let Some(ref vendor_dir) = cli.vendor_dir {
         let absolute_path = std::env::current_dir()
             .context("Could not determine current directory")?
             .join(vendor_dir);
@@ -118,7 +132,7 @@ fn run(cli: CargoLockPrefetchCli) -> Result<(), anyhow::Error> {
             anyhow!("cannot use path {absolute_path:?} as cargo argument: not utf8")
         })?;
         run_cargo(
-            &dir,
+            dir.as_ref(),
             "vendor",
             [absolute_path, "--frozen"]
                 .into_iter()
@@ -247,6 +261,14 @@ fn run_cargo<S>(
 where
     S: AsRef<OsStr>,
 {
+    if !cwd.as_ref().is_dir() {
+        let dir = cwd.as_ref().as_os_str();
+        Err(if cwd.as_ref().exists() {
+            anyhow!("{:?} is not a directory", dir)
+        } else {
+            anyhow!("{:?} does not exist", dir)
+        })?
+    }
     let (out_cfg, err_cfg) = if inherit_output {
         (Stdio::inherit(), Stdio::inherit())
     } else {

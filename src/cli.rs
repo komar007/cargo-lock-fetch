@@ -1,4 +1,5 @@
 use clap_cargo::style::CLAP_STYLING;
+use indoc::indoc;
 
 #[derive(clap::Parser, Debug)]
 #[command(
@@ -22,7 +23,7 @@ pub enum CargoLockPrefetch {
     version,
     styles = CLAP_STYLING,
     about = "Prefetch crate dependencies from Cargo.lock",
-    after_help = indoc::indoc! {"
+    after_help = indoc! {"
         This cargo plugin prefetches and vendors dependencies without accessing any
         Cargo.toml files.
     "}
@@ -67,4 +68,14 @@ pub struct CargoLockPrefetchCli {
         help = "Do not remove temporary cargo project's directory, print its name to stderr"
     )]
     pub keep_tmp: bool,
+
+    #[arg(
+        value_name = "DIR",
+        long,
+        help = indoc! {"
+            Keep temporary files in <DIR>, the directory must exist, implies --keep-tmp, but
+            does not print <DIR> to stderr
+        "}
+    )]
+    pub tmp_dir: Option<String>,
 }
