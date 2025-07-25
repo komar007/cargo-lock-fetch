@@ -4,6 +4,15 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.86.0"
 
+description = "cargo fetch & vendor for Cargo.lock"
+authors =  ["Michał Trybus <komar007@gmail.com>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+repository = "https://github.com/komar007/cargo-lock-fetch"
+categories = ["development-tools", "development-tools::cargo-plugins"]
+keywords = ["cli", "cargo", "crate", "crates", "lockfile", "registry"]
+
 [dependencies]
 anyhow = "1.0.98"
 cargo-lock = "10.1.0"
