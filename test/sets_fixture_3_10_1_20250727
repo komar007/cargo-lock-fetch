@@ -1,0 +1,3 @@
+aho-corasick@=1.1.3 parking_lot_core@=0.9.11 lazy_static@=1.5.0 semver@=1.0.26 idna@=1.0.3 bytes@=1.10.1 scopeguard@=1.2.0 pin-project-lite@=0.2.16 windows-sys@=0.60.2 ppv-lite86@=0.2.21
+cc@=1.2.30 smallvec@=1.15.1 parking_lot@=0.12.4 either@=1.15.0 time@=0.3.41 digest@=0.10.7 block-buffer@=0.10.4 crossbeam-utils@=0.8.21 mio@=1.0.4 memoffset@=0.9.1
+clap@=4.5.41 strsim@=0.11.1 num-traits@=0.2.19 version_check@=0.9.5 socket2@=0.6.0 lock_api@=0.4.13 rustix@=1.0.8 miniz_oxide@=0.8.9 anyhow@=1.0.98 http@=1.3.1

@@ -2,6 +2,10 @@
 
 set -e
 
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/..
+
+cd "$ROOT"
+
 if [ -z "$1" ]; then
 	echo "usage: $0 crate"
 	exit 1
