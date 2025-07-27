@@ -67,6 +67,18 @@ jobs:
         run: ./test/test_all.sh
         shell: bash
 
+  build-example:
+    name: Build example
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build with Docker Compose
+        working-directory: ./examples/fetch-deps-to-layer
+        run: docker compose build
+
   clippy:
     name: Clippy
     permissions:
