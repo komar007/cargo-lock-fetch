@@ -2,9 +2,9 @@ mod batches;
 mod cargo_config_toml;
 mod cargo_toml;
 mod cli;
+mod registry_aliases;
 
 use std::{
-    collections::BTreeMap,
     ffi::OsStr,
     iter::once,
     path::{Path, PathBuf},
@@ -22,7 +22,8 @@ use itertools::{Either, Itertools as _};
 use log::{debug, error, info, warn};
 use unwrap_infallible::UnwrapInfallible as _;
 
-use cli::{CargoLockFetch, CargoLockFetchCli, Cli};
+use crate::cli::{CargoLockFetch, CargoLockFetchCli, Cli};
+use crate::registry_aliases::RegistryAliases;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -90,7 +91,7 @@ fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
         warn!(crates:? = local; "a crate other than root crate has no source");
     }
 
-    let mut registries = BTreeMap::new();
+    let mut registries = RegistryAliases::new();
     let batches = batches::into_batches(packages).collect_vec();
     let batch_names = batches
         .into_iter()
@@ -148,7 +149,7 @@ fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
 fn add_packages(
     dir: impl AsRef<Path>,
     deps: impl IntoIterator<Item = Dependency>,
-    registries: &mut BTreeMap<String, String>,
+    registries: &mut RegistryAliases,
 ) -> Result<(), anyhow::Error> {
     let deps = deps
         .into_iter()
@@ -193,7 +194,7 @@ fn source_to_dependency_entry(
     name: &str,
     source: &SourceId,
     version: &str,
-    registries: &mut BTreeMap<String, String>,
+    registries: &mut RegistryAliases,
 ) -> Result<toml_edit::Table, SourceError> {
     use toml_edit::{Table, value as v};
 
@@ -216,7 +217,6 @@ fn source_to_dependency_entry(
         }
         SourceKind::Path => Table::from_iter([("path", v(uri))]),
         SourceKind::Registry | SourceKind::SparseRegistry => {
-            let num = registries.len() + 1;
             let registry_uri = [
                 (if *source.kind() == SourceKind::Registry {
                     "registry"
@@ -226,12 +226,9 @@ fn source_to_dependency_entry(
                 uri,
             ]
             .join("+");
-            let reg = registries
-                .entry(registry_uri)
-                .or_insert_with(|| format!("reg{num}"));
             Table::from_iter([
                 ("version", v(format!("={version}"))),
-                ("registry", v(&*reg)),
+                ("registry", v(registries.get_alias(registry_uri))),
             ])
         }
         kind => return Err(SourceError::Unsupported(kind.clone())),
