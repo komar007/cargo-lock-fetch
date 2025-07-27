@@ -33,6 +33,57 @@ cargo lock-fetch --lockfile-path path/to/Cargo.lock --vendor vendor_dir/
 
 There is no need to run `cargo lock-fetch` from any specific directory.
 
+## Example: primary use case
+
+The following example is the reason this plugin was written.
+
+Assuming the `Dockerfile` is in the root directory of a cargo project, a minimal setup that caches
+project dependencies in a docker layer and rebuilds it only on Cargo.lock changes would look like
+this:
+
+```dockerfile
+FROM rust:1.88.0-alpine3.22 AS builder
+
+# Tools layer
+RUN apk update \
+ && apk add --no-cache musl-dev \
+ && cargo install cargo-lock-fetch
+
+WORKDIR /app
+
+# Dependencies layer: fetch all dependencies, but only rebuild layer
+# when Cargo.lock changes.
+#
+# This is for demonstration only - using cargo-lock-fetch starts to
+# matter only when multiple Cargo.toml files are used because the
+# project consists of many crates. It eliminates the need to specify
+# each and every Crate.toml file to be copied into the build context.
+COPY Cargo.lock .
+RUN cargo lock-fetch
+
+# Sources layer: the build runs offline here. This layer rebuilds when
+# any file changes, but dependencies are cached in the previous layer.
+COPY . .
+RUN cargo build --frozen --release
+
+FROM scratch
+
+COPY --from=builder /app/target/release/app /app
+CMD [ "/app" ]
+```
+
+The idea can be tested with `docker compose build` in `examples/fetch-deps-to-layer`.
+
+> [!TIP]
+> This simple example will benefit from using build cache (`RUN --mount=type=cache`) for
+> `$CARGO_HOME` so that each Cargo.lock update only downloads the added dependencies instead of
+> re-downloading all of them, but it is not covered here. Similarly, build cache can be used to
+> speed up incremental builds by letting cargo reuse `$CARGO_TARGET_DIR`.
+
+> [!WARNING]
+> Don't shoot yourself in the foot while using cache mounts in docker builds, remember to use
+> sensible values of `id` in each `RUN --mount=type=cache`. You have been warned.
+
 ## How it works
 
 In order to use `cargo` to fetch the crates, `cargo-lock-fetch` creates a cargo package and adds the
