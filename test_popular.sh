@@ -30,7 +30,10 @@ echo " done" >&2
 
 for i in $(seq $N); do
 	crates=$(sed -n "$(seq "$i" $N $TOTAL | tr '\n' ' ' | sed 's/ /p;/g')" <<< "$POP")
-	echo -n "test $i: "
+	echo -n "test $i/fetch: "
+	# shellcheck disable=SC2086
+	./test_fetch.sh $crates
+	echo -n "test $i/vendor: "
 	# shellcheck disable=SC2086
 	./test_vendor.sh $crates
 done
