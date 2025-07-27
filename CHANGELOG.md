@@ -1,5 +1,19 @@
 # Changelog of `cargo-lock-fetch`
 
+## [0.1.1] - 2025-07-27
+
+### 🚀 Features (a fix, really)
+
+- Using CARGO variable to call cargo
+
+### 📚 Documentation
+
+- Added docker example
+
+### 🧪 Testing
+
+- Added 2 test fixtures and a test suite to run them both
+
 ## [0.1.0] - 2025-07-25
 
 ### 🚀 Features
