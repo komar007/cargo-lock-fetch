@@ -16,7 +16,7 @@ TARGET=$(realpath target/debug/cargo-lock-fetch)
 
 D=$(mktemp -d)
 cleanup() {
-    rm -rf "$D"
+	rm -rf "$D"
 }
 trap cleanup EXIT
 
@@ -26,7 +26,7 @@ cd "$D/package"
 cargo -q init . --vcs none --name package
 cargo -q add "$@"
 
-cd - > /dev/null
+cd - >/dev/null
 export CARGO_HOME="$D/cargo_home"
 $TARGET lock-fetch -q --lockfile-path "$D/package/Cargo.lock"
 cd "$D/package"
