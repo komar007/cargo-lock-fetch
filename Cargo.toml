@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 repository = "https://github.com/komar007/cargo-lock-fetch"
-categories = ["development-tools", "development-tools::cargo-plugins"]
+categories = ["development-tools", "development-tools::cargo-plugins", "command-line-utilities"]
 keywords = ["cli", "cargo", "dependencies", "lockfile", "registry"]
 
 [dependencies]
