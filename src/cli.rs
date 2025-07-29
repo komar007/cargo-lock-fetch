@@ -1,3 +1,4 @@
+use clap::error::ErrorKind;
 use clap_cargo::style::CLAP_STYLING;
 use indoc::indoc;
 
@@ -78,4 +79,16 @@ pub struct CargoLockFetchCli {
         "}
     )]
     pub tmp_dir: Option<String>,
+}
+
+impl CargoLockFetchCli {
+    pub fn verify(self) -> Result<Self, (ErrorKind, String)> {
+        if self.keep_tmp && self.tmp_dir.is_some() {
+            Err((
+                ErrorKind::ArgumentConflict,
+                "arguments --keep-tmp and --tmp-dir are mutually exclusive".to_string(),
+            ))?;
+        }
+        Ok(self)
+    }
 }
