@@ -123,7 +123,7 @@ fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
         &mut registries,
     )
     .context("failed to add sub-crates as dependencies")?;
-    run_cargo(dir.as_ref(), "fetch", [] as [&str; 0], false, cli.quiet)
+    run_cargo(dir.as_ref(), "fetch", [] as [&str; 0], true, cli.quiet)
         .context("failed to fetch packages")?;
     if let Some(ref vendor_dir) = cli.vendor_dir {
         let absolute_path = std::env::current_dir()
