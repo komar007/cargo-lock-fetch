@@ -8,7 +8,7 @@ use std::{
     ffi::OsStr,
     iter::once,
     path::{Path, PathBuf},
-    process::{Command, ExitCode, Stdio},
+    process::{Command, ExitCode, ExitStatus, Stdio},
     str::FromStr as _,
 };
 
@@ -36,10 +36,12 @@ fn main() -> ExitCode {
             "arguments --keep-tmp and --tmp-dir are mutually exclusive",
         );
     }
-    if let Err(error) = run(&sub) {
-        exit_cli_error(&sub, ErrorKind::Io, &format!("{error:?}"));
+    match run(&sub) {
+        Ok(status) => status,
+        Err(error) => {
+            exit_cli_error(&sub, ErrorKind::Io, &format!("{error:?}"));
+        }
     }
-    0.into()
 }
 
 fn exit_cli_error(cli: &CargoLockFetchCli, kind: ErrorKind, msg: &str) -> ! {
@@ -49,7 +51,7 @@ fn exit_cli_error(cli: &CargoLockFetchCli, kind: ErrorKind, msg: &str) -> ! {
     CargoLockFetchCli::command().error(kind, msg).exit()
 }
 
-fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
+fn run(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
     env_logger::init();
 
     let lockfile = Lockfile::load(&cli.lockfile_path)
@@ -75,7 +77,6 @@ fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
         dir.as_ref(),
         "init",
         [".", "--name", "fake", "--vcs", "none"],
-        false,
         cli.quiet,
     )
     .context("failed to create main project")?;
@@ -103,7 +104,6 @@ fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
                 dir.as_ref(),
                 "init",
                 [&batch_name, "--name", &batch_name, "--vcs", "none"],
-                false,
                 cli.quiet,
             )
             .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
@@ -123,27 +123,32 @@ fn run(cli: &CargoLockFetchCli) -> Result<(), anyhow::Error> {
         &mut registries,
     )
     .context("failed to add sub-crates as dependencies")?;
-    run_cargo(dir.as_ref(), "fetch", [] as [&str; 0], true, cli.quiet)
-        .context("failed to fetch packages")?;
-    if let Some(ref vendor_dir) = cli.vendor_dir {
+
+    let cargo_status = if let Some(ref vendor_dir) = cli.vendor_dir {
         let absolute_path = std::env::current_dir()
             .context("Could not determine current directory")?
             .join(vendor_dir);
         let absolute_path = absolute_path.to_str().ok_or_else(|| {
             anyhow!("cannot use path {absolute_path:?} as cargo argument: not utf8")
         })?;
-        run_cargo(
+        run_cargo_passthrough(
             dir.as_ref(),
             "vendor",
-            [absolute_path, "--frozen"]
+            [absolute_path]
                 .into_iter()
                 .chain(cli.versioned_dirs.then_some("--versioned-dirs")),
-            true,
             cli.quiet,
         )
-        .context("failed to vendor packages")?;
-    }
-    Ok(())
+        .context("failed to vendor packages")?
+    } else {
+        run_cargo_passthrough(dir.as_ref(), "fetch", [] as [&str; 0], cli.quiet)
+            .context("failed to fetch packages")?
+    };
+    let cargo_code = cargo_status
+        .code()
+        .map(|c| (c as u8).into())
+        .unwrap_or(ExitCode::FAILURE);
+    Ok(cargo_code)
 }
 
 fn add_packages(
@@ -252,9 +257,35 @@ fn run_cargo<S>(
     cwd: impl AsRef<Path>,
     cargo_cmd: &str,
     args: impl IntoIterator<Item = S>,
-    inherit_output: bool,
     quiet: bool,
 ) -> Result<(), anyhow::Error>
+where
+    S: AsRef<OsStr>,
+{
+    let status = run_cargo_impl(cwd.as_ref(), cargo_cmd, args, false, quiet)?;
+    assert!(status.success());
+    Ok(())
+}
+
+fn run_cargo_passthrough<S>(
+    cwd: impl AsRef<Path>,
+    cargo_cmd: &str,
+    args: impl IntoIterator<Item = S>,
+    quiet: bool,
+) -> Result<ExitStatus, anyhow::Error>
+where
+    S: AsRef<OsStr>,
+{
+    run_cargo_impl(cwd.as_ref(), cargo_cmd, args, true, quiet)
+}
+
+fn run_cargo_impl<S>(
+    cwd: &Path,
+    cargo_cmd: &str,
+    args: impl IntoIterator<Item = S>,
+    passthrough: bool,
+    quiet: bool,
+) -> Result<ExitStatus, anyhow::Error>
 where
     S: AsRef<OsStr>,
 {
@@ -269,15 +300,15 @@ where
             debug!(cargo; "calling $CARGO");
         })
         .unwrap_or("cargo");
-    if !cwd.as_ref().is_dir() {
-        let dir = cwd.as_ref().as_os_str();
-        Err(if cwd.as_ref().exists() {
+    if !cwd.is_dir() {
+        let dir = cwd.as_os_str();
+        Err(if cwd.exists() {
             anyhow!("{:?} is not a directory", dir)
         } else {
             anyhow!("{:?} does not exist", dir)
         })?
     }
-    let (out_cfg, err_cfg) = if inherit_output {
+    let (out_cfg, err_cfg) = if passthrough {
         (Stdio::inherit(), Stdio::inherit())
     } else {
         (Stdio::null(), Stdio::piped())
@@ -293,13 +324,15 @@ where
         cmd.arg("-q");
     }
     info!(cmd:?; "running cargo");
-    let output = cmd.output().context("failed to invoke cargo")?;
-    if !output.status.success() {
+    let output = cmd
+        .output()
+        .with_context(|| format!("failed to invoke cargo {cargo_cmd}"))?;
+    if !passthrough && !output.status.success() {
         let err =
             String::from_utf8(output.stderr).context("cargo returned non-utf8 error output")?;
         Err(std::io::Error::other(format!(
-            "failed to run cargo {cargo_cmd}:\n{err}"
+            "\"cargo {cargo_cmd}\" returned error:\n{err}"
         )))?
     }
-    Ok(())
+    Ok(output.status)
 }
