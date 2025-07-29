@@ -1,14 +1,14 @@
 mod batches;
+mod cargo;
 mod cargo_config_toml;
 mod cargo_toml;
 mod cli;
 mod registry_aliases;
 
 use std::{
-    ffi::OsStr,
     iter::once,
     path::{Path, PathBuf},
-    process::{Command, ExitCode, ExitStatus, Stdio},
+    process::ExitCode,
     str::FromStr as _,
 };
 
@@ -19,7 +19,7 @@ use cargo_lock::{
 };
 use clap::{CommandFactory, Parser as _, error::ErrorKind};
 use itertools::{Either, Itertools as _};
-use log::{debug, error, info, warn};
+use log::{error, warn};
 use unwrap_infallible::UnwrapInfallible as _;
 
 use crate::cli::{CargoLockFetch, CargoLockFetchCli, Cli};
@@ -73,7 +73,7 @@ fn run(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
         Box::new(dir) as _
     };
 
-    run_cargo(
+    cargo::run(
         dir.as_ref(),
         "init",
         [".", "--name", "fake", "--vcs", "none"],
@@ -100,7 +100,7 @@ fn run(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
         .map(|(i, batch)| -> Result<_, anyhow::Error> {
             let batch_no = i + 1;
             let batch_name = format!("batch{batch_no}");
-            run_cargo(
+            cargo::run(
                 dir.as_ref(),
                 "init",
                 [&batch_name, "--name", &batch_name, "--vcs", "none"],
@@ -131,7 +131,7 @@ fn run(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
         let absolute_path = absolute_path.to_str().ok_or_else(|| {
             anyhow!("cannot use path {absolute_path:?} as cargo argument: not utf8")
         })?;
-        run_cargo_passthrough(
+        cargo::run_passthrough(
             dir.as_ref(),
             "vendor",
             [absolute_path]
@@ -141,7 +141,7 @@ fn run(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
         )
         .context("failed to vendor packages")?
     } else {
-        run_cargo_passthrough(dir.as_ref(), "fetch", [] as [&str; 0], cli.quiet)
+        cargo::run_passthrough(dir.as_ref(), "fetch", [] as [&str; 0], cli.quiet)
             .context("failed to fetch packages")?
     };
     let cargo_code = cargo_status
@@ -251,88 +251,4 @@ pub enum SourceError {
 enum Dependency {
     Real(Box<Package>),
     BatchSubCrate(String),
-}
-
-fn run_cargo<S>(
-    cwd: impl AsRef<Path>,
-    cargo_cmd: &str,
-    args: impl IntoIterator<Item = S>,
-    quiet: bool,
-) -> Result<(), anyhow::Error>
-where
-    S: AsRef<OsStr>,
-{
-    let status = run_cargo_impl(cwd.as_ref(), cargo_cmd, args, false, quiet)?;
-    assert!(status.success());
-    Ok(())
-}
-
-fn run_cargo_passthrough<S>(
-    cwd: impl AsRef<Path>,
-    cargo_cmd: &str,
-    args: impl IntoIterator<Item = S>,
-    quiet: bool,
-) -> Result<ExitStatus, anyhow::Error>
-where
-    S: AsRef<OsStr>,
-{
-    run_cargo_impl(cwd.as_ref(), cargo_cmd, args, true, quiet)
-}
-
-fn run_cargo_impl<S>(
-    cwd: &Path,
-    cargo_cmd: &str,
-    args: impl IntoIterator<Item = S>,
-    passthrough: bool,
-    quiet: bool,
-) -> Result<ExitStatus, anyhow::Error>
-where
-    S: AsRef<OsStr>,
-{
-    let c = std::env::var("CARGO");
-    let cargo_bin = c
-        .as_ref()
-        .map(AsRef::as_ref)
-        .inspect_err(|error| {
-            warn!(error:err = **error; "could not retrieve $CARGO, calling cargo directly");
-        })
-        .inspect(|cargo| {
-            debug!(cargo; "calling $CARGO");
-        })
-        .unwrap_or("cargo");
-    if !cwd.is_dir() {
-        let dir = cwd.as_os_str();
-        Err(if cwd.exists() {
-            anyhow!("{:?} is not a directory", dir)
-        } else {
-            anyhow!("{:?} does not exist", dir)
-        })?
-    }
-    let (out_cfg, err_cfg) = if passthrough {
-        (Stdio::inherit(), Stdio::inherit())
-    } else {
-        (Stdio::null(), Stdio::piped())
-    };
-    let mut cmd = Command::new(cargo_bin);
-    let cmd = cmd
-        .stdout(out_cfg)
-        .stderr(err_cfg)
-        .arg(cargo_cmd)
-        .args(args)
-        .current_dir(cwd);
-    if quiet {
-        cmd.arg("-q");
-    }
-    info!(cmd:?; "running cargo");
-    let output = cmd
-        .output()
-        .with_context(|| format!("failed to invoke cargo {cargo_cmd}"))?;
-    if !passthrough && !output.status.success() {
-        let err =
-            String::from_utf8(output.stderr).context("cargo returned non-utf8 error output")?;
-        Err(std::io::Error::other(format!(
-            "\"cargo {cargo_cmd}\" returned error:\n{err}"
-        )))?
-    }
-    Ok(output.status)
 }
