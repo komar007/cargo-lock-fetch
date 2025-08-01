@@ -72,17 +72,7 @@ COPY --from=builder /app/target/release/app /app
 CMD [ "/app" ]
 ```
 
-The idea can be tested with `docker compose build` in `examples/fetch-deps-to-layer`.
-
-> [!TIP]
-> This simple example will benefit from using build cache (`RUN --mount=type=cache`) for
-> `$CARGO_HOME` so that each Cargo.lock update only downloads the added dependencies instead of
-> re-downloading all of them, but it is not covered here. Similarly, build cache can be used to
-> speed up incremental builds by letting cargo reuse `$CARGO_TARGET_DIR`.
-
-> [!WARNING]
-> Don't shoot yourself in the foot while using cache mounts in docker builds, remember to use
-> sensible values of `id` in each `RUN --mount=type=cache`. You have been warned.
+The example can be tested with `docker compose build` in `examples/fetch-deps-to-layer`.
 
 ## How it works
 
