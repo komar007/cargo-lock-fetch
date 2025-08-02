@@ -23,6 +23,7 @@ pub enum CargoLockFetch {
     name = "cargo lock-fetch",
     trailing_var_arg = true,
     version,
+    long_version = crate::build::CLAP_LONG_VERSION,
     styles = CLAP_STYLING,
     about = "Fetch crate dependencies from Cargo.lock",
     after_help = indoc! {"

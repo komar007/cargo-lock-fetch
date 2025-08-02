@@ -12,6 +12,8 @@ use clap::{CommandFactory, Parser as _, error::ErrorKind};
 
 use crate::cli::{CargoLockFetch, CargoLockFetchCli, Cli};
 
+shadow_rs::shadow!(build);
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
