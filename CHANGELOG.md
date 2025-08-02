@@ -1,5 +1,21 @@
 # Changelog of `cargo-lock-fetch`
 
+## [0.2.0] - 2025-08-02
+
+This release is mainly about adding automatic binary releasing via github actions and some minor
+bugfixing. Some refactoring has been done and tests added.
+
+### 🚀 Features
+
+- Enhanced cargo invocation error handling (#7)
+- *(cli)* [**breaking**] Passing extra options to cargo (#15), this also removes `--versioned-dirs`,
+  as it can now be passed through to cargo
+
+### 🐛 Bug Fixes
+
+- Inherit stdin and stdout also on cargo fetch (#7)
+
+
 ## [0.1.1] - 2025-07-27
 
 ### 🚀 Features (a fix, really)
