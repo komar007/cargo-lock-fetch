@@ -9,6 +9,8 @@ permissions:
 
 jobs:
   upload-assets:
+    env:
+      BIN_NAME: cargo-lock-fetch
     name: upload-assets (${{ matrix.os }} ${{ matrix.target }})
     strategy:
       matrix:
@@ -27,7 +29,8 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           locked: true
-          bin: cargo-lock-fetch
+          bin: ${{ env.BIN_NAME }}
+          archive: ${{ env.BIN_NAME }}-${{ github.event.release.tag_name }}-${{ matrix.target }}
           target: ${{ matrix.target }}
           tar: unix
           zip: windows
