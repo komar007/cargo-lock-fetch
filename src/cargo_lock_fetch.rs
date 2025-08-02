@@ -104,15 +104,22 @@ pub fn main(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
         cargo::run_passthrough(
             dir.as_ref(),
             "vendor",
-            [absolute_path]
+            ["--manifest-path", "Cargo.toml", absolute_path]
                 .into_iter()
-                .chain(cli.versioned_dirs.then_some("--versioned-dirs")),
+                .chain(cli.cargo_args.iter().map(AsRef::as_ref)),
             cli.quiet,
         )
         .context("failed to vendor packages")?
     } else {
-        cargo::run_passthrough(dir.as_ref(), "fetch", [] as [&str; 0], cli.quiet)
-            .context("failed to fetch packages")?
+        cargo::run_passthrough(
+            dir.as_ref(),
+            "fetch",
+            ["--manifest-path", "Cargo.toml"]
+                .into_iter()
+                .chain(cli.cargo_args.iter().map(AsRef::as_ref)),
+            cli.quiet,
+        )
+        .context("failed to fetch packages")?
     };
     let cargo_code = cargo_status
         .code()

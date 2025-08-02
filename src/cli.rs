@@ -21,6 +21,7 @@ pub enum CargoLockFetch {
 #[derive(Debug, clap::Parser)]
 #[command(
     name = "cargo lock-fetch",
+    trailing_var_arg = true,
     version,
     styles = CLAP_STYLING,
     about = "Fetch crate dependencies from Cargo.lock",
@@ -49,14 +50,6 @@ pub struct CargoLockFetchCli {
 
     #[arg(
         long,
-        requires = "vendor",
-        default_value = "false",
-        help = "Always include version in subdir name, only valid with --vendor"
-    )]
-    pub versioned_dirs: bool,
-
-    #[arg(
-        long,
         short,
         default_value = "false",
         help = "Do not print any messages, even errors"
@@ -79,6 +72,14 @@ pub struct CargoLockFetchCli {
         "}
     )]
     pub tmp_dir: Option<String>,
+
+    #[arg(
+        help = indoc!{"
+            Arguments to pass through to cargo. Cargo fetch/vendor will be called on
+            a generated Cargo.toml file - not all options make sense in this context
+        "}
+    )]
+    pub cargo_args: Vec<String>,
 }
 
 impl CargoLockFetchCli {
