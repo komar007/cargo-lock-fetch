@@ -28,6 +28,6 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/${{ env.BIN_NAME }}:${{ env.DOCKER_TAG }}
+            ${{ secrets.DOCKER_USERNAME }}/${{ env.BIN_NAME }}:0.2.0
             ${{ secrets.DOCKER_USERNAME }}/${{ env.BIN_NAME }}:latest
           platforms: linux/amd64,linux/arm64
