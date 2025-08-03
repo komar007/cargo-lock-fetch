@@ -20,7 +20,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
-      - run: echo "DOCKER_TAG=${GITHUB_EVENT_RELEASE_TAG_NAME}" | sed 's/^v//' >> $GITHUB_ENV
+      - run: echo "DOCKER_TAG=${GITHUB_EVENT_RELEASE_TAG_NAME#v}" >> $GITHUB_ENV
         env:
           GITHUB_EVENT_RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
       - uses: docker/build-push-action@v5
