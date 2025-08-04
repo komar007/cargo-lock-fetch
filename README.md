@@ -14,8 +14,24 @@ dependencies without copying/mounting all `Cargo.toml` files of a multi-crate wo
 
 ## Installation
 
+`cargo-lock-fetch` is mainly intended to be used with containers. Docker users can copy it from the
+binary docker distribution:
+
+``` dockerfile
+COPY --from=komar007/cargo-lock-fetch \
+    /cargo-lock-fetch /usr/local/cargo/bin
+```
+
+It's also possible to build from source:
+
 ``` sh
 cargo install cargo-lock-fetch
+```
+
+or install a binary release from github:
+
+``` sh
+cargo binstall cargo-lock-fetch # requires cargo-binstall
 ```
 
 ## Usage
