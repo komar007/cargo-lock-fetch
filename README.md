@@ -1,7 +1,8 @@
 # `cargo-lock-fetch` - `cargo fetch` and `cargo vendor` with just Cargo.lock
 
-![Crates.io License](https://img.shields.io/crates/l/cargo-lock-fetch) [![Crates.io
-Version](https://img.shields.io/crates/v/cargo-lock-fetch)](https://crates.io/crates/cargo-lock-fetch/)
+![Crates.io License](https://img.shields.io/crates/l/cargo-lock-fetch)
+[![Crates.io Version](https://img.shields.io/crates/v/cargo-lock-fetch)](https://crates.io/crates/cargo-lock-fetch/)
+[![Docker Image Version](https://img.shields.io/docker/v/komar007/cargo-lock-fetch?logo=docker&label=hub)](https://hub.docker.com/r/komar007/cargo-lock-fetch)
 ![GitHub branch check runs](https://img.shields.io/github/check-runs/komar007/cargo-lock-fetch/main)
 ![Crates.io MSRV](https://img.shields.io/crates/msrv/cargo-lock-fetch)
 
