@@ -12,6 +12,14 @@ only on `Cargo.lock`.
 It is particularly useful when building rarely changing docker layers containing just project
 dependencies without copying/mounting all `Cargo.toml` files of a multi-crate workspace.
 
+<!--toc:start-->
+- [Installation](#installation)
+- [Usage](#usage)
+- [SemVer compatibility](#semver-compatibility)
+- [Example: primary use case](#example-primary-use-case)
+- [How it works](#how-it-works)
+<!--toc:end-->
+
 ## Installation
 
 `cargo-lock-fetch` is mainly intended to be used with containers. Docker users can copy it from the
@@ -36,8 +44,9 @@ cargo binstall cargo-lock-fetch # requires cargo-binstall
 
 > [!IMPORTANT]
 > For reproducible builds, avoid omitting version requirements when specifying dependencies. See
-> below for semver guarantees. For `cargo` `install`/`binstall` use `cargo-lock-fetch@0.x.y`, for
-> docker images, use specific tag: `komar007/cargo-lock-fetch:0.x.y`.
+> [SemVer compatibility](#semver-compatibility) for semver guarantees. For `cargo`
+> `install`/`binstall` use `cargo-lock-fetch@0.x.y`, for docker images, use specific tag:
+> `komar007/cargo-lock-fetch:0.x.y`.
 
 ## Usage
 
@@ -55,9 +64,10 @@ cargo lock-fetch --lockfile-path path/to/Cargo.lock --vendor vendor_dir/
 
 There is no need to run `cargo lock-fetch` from any specific directory.
 
-## [SemVer](https://semver.org/) compatibility
+## SemVer compatibility
 
-This tool follows the cargo/semver guidelines with respect to its CLI interface. At the current
+This tool follows the [cargo](https://doc.rust-lang.org/cargo/reference/semver.html) /
+[semver](https://semver.org/) guidelines with respect to its CLI interface. At the current
 `0.x.y` stage, changes of `x` (MINOR) indicate breaking changes. `cargo-lock-fetch` is close to
 declaring a public interface which will be indicated by reaching version `1.0.0`. From this moment,
 breaking changes to the CLI interface will be indicated by MAJOR version increments.
