@@ -34,6 +34,11 @@ or install a binary release from github:
 cargo binstall cargo-lock-fetch # requires cargo-binstall
 ```
 
+> [!IMPORTANT]
+> For reproducible builds, avoid omitting version requirements when specifying dependencies. See
+> below for semver guarantees. For `cargo` `install`/`binstall` use `cargo-lock-fetch@0.x.y`, for
+> docker images, use specific tag: `komar007/cargo-lock-fetch:0.x.y`.
+
 ## Usage
 
 To fetch dependencies to cargo’s registry cache:
@@ -49,6 +54,13 @@ cargo lock-fetch --lockfile-path path/to/Cargo.lock --vendor vendor_dir/
 ```
 
 There is no need to run `cargo lock-fetch` from any specific directory.
+
+## [SemVer](https://semver.org/) compatibility
+
+This tool follows the cargo/semver guidelines with respect to its CLI interface. At the current
+`0.x.y` stage, changes of `x` (MINOR) indicate breaking changes. `cargo-lock-fetch` is close to
+declaring a public interface which will be indicated by reaching version `1.0.0`. From this moment,
+breaking changes to the CLI interface will be indicated by MAJOR version increments.
 
 ## Example: primary use case
 
