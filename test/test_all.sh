@@ -4,6 +4,9 @@ set -e
 
 DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
+echo "testing if examples are up to date" >&2
+"$DIR"/test_examples.sh
+
 # some real-life rust programs from their repositories
 echo "testing fixture 0 (bootstrap)" >&2
 "$DIR"/test_sets.sh fetch-repo <<<"$DIR/.."

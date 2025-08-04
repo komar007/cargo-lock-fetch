@@ -1,0 +1,6 @@
+services:
+  example:
+    image: cargo-lock-fetch-example-from-docker
+    build:
+      context: .
+      dockerfile: Dockerfile
