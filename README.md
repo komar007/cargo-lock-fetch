@@ -1,4 +1,4 @@
-# `cargo-lock-fetch` - `cargo fetch` and `cargo vendor` with just Cargo.lock
+# `cargo-lock-fetch` - cargo fetch and vendor with just Cargo.lock
 
 ![Crates.io License](https://img.shields.io/crates/l/cargo-lock-fetch)
 [![Crates.io Version](https://img.shields.io/crates/v/cargo-lock-fetch)](https://crates.io/crates/cargo-lock-fetch/)
@@ -77,7 +77,7 @@ breaking changes to the CLI interface will be indicated by MAJOR version increme
 The following example is the reason this plugin was written.
 
 Assuming the `Dockerfile` is in the root directory of a cargo project, a minimal setup that caches
-project dependencies in a docker layer and rebuilds it only on Cargo.lock changes would look like
+project dependencies in a docker layer and rebuilds it only on `Cargo.lock` changes would look like
 this:
 
 ```dockerfile
@@ -96,7 +96,7 @@ WORKDIR /app
 # This is for demonstration only - using cargo-lock-fetch starts to
 # matter only when multiple Cargo.toml files are used because the
 # project consists of many crates. It eliminates the need to specify
-# each and every Crate.toml file to be copied into the build context.
+# each and every Cargo.toml file to be copied into the build context.
 COPY Cargo.lock .
 RUN cargo lock-fetch
 
@@ -116,11 +116,11 @@ The example can be tested with `docker compose build` in `examples/fetch-deps-to
 ## How it works
 
 In order to use `cargo` to fetch the crates, `cargo-lock-fetch` creates a cargo package and adds the
-dependencies found in the input Cargo.lock file to its Cargo.toml, and then calls `cargo fetch` and
-optionally `cargo vendor`.
+dependencies found in the input `Cargo.lock` file to its `Cargo.toml,` and then calls `cargo fetch`
+and optionally `cargo vendor`.
 
-Because a single Cargo.toml file cannot contain multiple versions of the same crate as dependencies,
-and this situation is perfectly correct for cargo packages if the versions are pulled in indirectly
-by different dependencies, `cargo-lock-fetch` distributes the list of dependencies between
-sub-crates using an approach based on greedy vertex coloring, which is optimal for cluster graphs
-(there is an edge between 2 dependencies iff they are different versions of the same crate).
+Because a single `Cargo.toml` file cannot contain multiple versions of the same crate as
+dependencies, and this situation is perfectly correct for cargo packages if the versions are pulled
+in indirectly by different dependencies, `cargo-lock-fetch` distributes the list of dependencies
+between sub-crates using an approach based on greedy vertex coloring, which is optimal for cluster
+graphs (there is an edge between 2 dependencies iff they are different versions of the same crate).
