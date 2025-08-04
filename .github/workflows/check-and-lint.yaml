@@ -75,8 +75,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Build with Docker Compose
+      - name: Build example 1 with Docker Compose
         working-directory: ./examples/fetch-deps-to-layer
+        run: docker compose build
+      - name: Build example 2 with Docker Compose
+        working-directory: ./examples/fetch-deps-to-layer-from-docker
         run: docker compose build
 
   clippy:
