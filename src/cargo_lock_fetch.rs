@@ -198,16 +198,21 @@ fn source_to_dependency_entry(
             Table::from_iter([("git", v(uri)), (ref_type, v(ref_val))])
         }
         SourceKind::Path => Table::from_iter([("path", v(uri))]),
+        // The default registry is left implicit so that cargo resolves it exactly like the
+        // original project would, honoring the default protocol and any source replacement,
+        // and therefore populates the same registry cache.
+        SourceKind::Registry | SourceKind::SparseRegistry if source.is_default_registry() => {
+            Table::from_iter([("version", v(format!("={version}")))])
+        }
+        // In .cargo/config.toml, a registry index is either a bare URL (git index) or a
+        // "sparse+"-prefixed URL; the "registry+" prefix is Cargo.lock's source-id encoding
+        // and is rejected by cargo since 1.96.
         SourceKind::Registry | SourceKind::SparseRegistry => {
-            let registry_uri = [
-                (if *source.kind() == SourceKind::Registry {
-                    "registry"
-                } else {
-                    "sparse"
-                }),
-                uri,
-            ]
-            .join("+");
+            let registry_uri = if *source.kind() == SourceKind::Registry {
+                uri.to_string()
+            } else {
+                format!("sparse+{uri}")
+            };
             Table::from_iter([
                 ("version", v(format!("={version}"))),
                 ("registry", v(registries.get_alias(registry_uri))),
@@ -228,4 +233,69 @@ pub enum SourceError {
 enum Dependency {
     Real(Box<Package>),
     BatchSubCrate(String),
+}
+
+#[cfg(test)]
+mod test {
+    use cargo_lock::SourceId;
+    use itertools::Itertools as _;
+
+    use super::source_to_dependency_entry;
+    use crate::registry_aliases::RegistryAliases;
+
+    fn entry_and_registries(source_url: &str) -> (toml_edit::Table, Vec<(String, String)>) {
+        let source = SourceId::from_url(source_url).expect("source url should parse");
+        let mut registries = RegistryAliases::new();
+        let entry = source_to_dependency_entry("foo", &source, "1.2.3", &mut registries)
+            .expect("registry source should be supported");
+        let registries = registries
+            .iter()
+            .map(|(a, u)| (a.to_owned(), u.to_owned()))
+            .collect_vec();
+        (entry, registries)
+    }
+
+    #[test]
+    fn crates_io_dependency_uses_implicit_registry() {
+        let (entry, registries) =
+            entry_and_registries("registry+https://github.com/rust-lang/crates.io-index");
+
+        assert_eq!(entry["version"].as_str(), Some("=1.2.3"));
+        assert!(!entry.contains_key("registry"));
+        assert_eq!(registries, vec![]);
+    }
+
+    #[test]
+    fn sparse_crates_io_dependency_uses_implicit_registry() {
+        let (entry, registries) = entry_and_registries("sparse+https://index.crates.io/");
+
+        assert!(!entry.contains_key("registry"));
+        assert_eq!(registries, vec![]);
+    }
+
+    #[test]
+    fn git_registry_index_has_no_protocol_prefix() {
+        let (entry, registries) = entry_and_registries("registry+https://example.com/index");
+
+        assert_eq!(
+            registries,
+            vec![(
+                entry["registry"].as_str().unwrap_or_default().to_string(),
+                "https://example.com/index".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn sparse_registry_index_keeps_sparse_prefix() {
+        let (entry, registries) = entry_and_registries("sparse+https://example.com/index/");
+
+        assert_eq!(
+            registries,
+            vec![(
+                entry["registry"].as_str().unwrap_or_default().to_string(),
+                "sparse+https://example.com/index/".to_string()
+            )]
+        );
+    }
 }
