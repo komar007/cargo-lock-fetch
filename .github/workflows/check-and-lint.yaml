@@ -61,7 +61,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: 1.95.0
           override: true
       - name: Run tests
         run: ./test/test_all.sh
