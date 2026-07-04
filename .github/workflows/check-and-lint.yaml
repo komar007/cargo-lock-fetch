@@ -94,11 +94,9 @@ jobs:
           toolchain: stable
           components: clippy
           default: true
-      - uses: actions-rs/clippy-check@v1
+      - uses: clechasseur/rs-clippy-check@v6.0.5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
-          name: Clippy Output
 
   build:
     name: Build
