@@ -62,7 +62,7 @@ jobs:
         with:
           profile: minimal
           toolchain: 1.95.0
-          override: true
+          default: true
       - name: Run tests
         run: ./test/test_all.sh
         shell: bash
