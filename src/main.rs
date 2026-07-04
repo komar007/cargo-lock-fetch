@@ -4,6 +4,7 @@ mod cargo_config_toml;
 mod cargo_lock_fetch;
 mod cargo_toml;
 mod cli;
+mod lockfile_synth;
 mod registry_aliases;
 
 use std::process::ExitCode;

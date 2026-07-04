@@ -19,6 +19,7 @@ use crate::cargo;
 use crate::cargo_config_toml;
 use crate::cargo_toml;
 use crate::cli::CargoLockFetchCli;
+use crate::lockfile_synth;
 use crate::registry_aliases::RegistryAliases;
 
 pub fn main(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
@@ -26,6 +27,7 @@ pub fn main(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
 
     let lockfile = Lockfile::load(&cli.lockfile_path)
         .with_context(|| format!("could not load lock file {}", &cli.lockfile_path))?;
+    let resolve_version = lockfile.version;
 
     let dir: Box<dyn AsRef<Path>> = if let Some(ref dir) = cli.tmp_dir {
         Box::new(PathBuf::from_str(dir).unwrap_infallible()) as _
@@ -63,36 +65,41 @@ pub fn main(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
     }
 
     let mut registries = RegistryAliases::new();
-    let batches = batches::into_batches(packages).collect_vec();
-    let batch_names = batches
-        .into_iter()
+    let batches = batches::into_batches(packages)
         .enumerate()
-        .map(|(i, batch)| -> Result<_, anyhow::Error> {
-            let batch_no = i + 1;
-            let batch_name = format!("batch{batch_no}");
-            cargo::run(
-                dir.as_ref(),
-                "init",
-                [&batch_name, "--name", &batch_name, "--vcs", "none"],
-                cli.quiet,
-            )
-            .with_context(|| format!("failed to create sub-crate for batch {batch_no}"))?;
-            let child = dir.as_ref().as_ref().join(&batch_name);
-            add_packages(
-                child,
-                batch.into_iter().map(|p| Dependency::Real(Box::new(p))),
-                &mut registries,
-            )
-            .with_context(|| format!("failed to add packages for batch {batch_no}"))?;
-            Ok(batch_name)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|(i, batch)| (format!("batch{}", i + 1), batch))
+        .collect_vec();
+    for (batch_name, batch) in &batches {
+        cargo::run(
+            dir.as_ref(),
+            "init",
+            [batch_name.as_str(), "--name", batch_name, "--vcs", "none"],
+            cli.quiet,
+        )
+        .with_context(|| format!("failed to create sub-crate for {batch_name}"))?;
+        let child = dir.as_ref().as_ref().join(batch_name);
+        add_packages(
+            child,
+            batch.iter().map(|p| Dependency::Real(Box::new(p.clone()))),
+            &mut registries,
+        )
+        .with_context(|| format!("failed to add packages for {batch_name}"))?;
+    }
     add_packages(
         dir.as_ref(),
-        batch_names.into_iter().map(Dependency::BatchSubCrate),
+        batches
+            .iter()
+            .map(|(batch_name, _)| Dependency::BatchSubCrate(batch_name.clone())),
         &mut registries,
     )
     .context("failed to add sub-crates as dependencies")?;
+
+    // Written after the manifests so that cargo sees a complete workspace: versions
+    // recorded in a Cargo.lock are exempt from cargo's yank filter, which lockfiles
+    // containing yanked versions rely on.
+    let synthesized = lockfile_synth::synthesize(resolve_version, &batches);
+    lockfile_synth::write_lockfile(dir.as_ref(), &synthesized)
+        .context("failed to write synthesized Cargo.lock")?;
 
     let cargo_status = if let Some(ref vendor_dir) = cli.vendor_dir {
         let absolute_path = std::env::current_dir()
