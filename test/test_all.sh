@@ -15,6 +15,10 @@ echo "testing fixture 0 (bootstrap)" >&2
 echo "testing fixture 1 (fetch+vendor, synthetic crates)" >&2
 "$DIR"/test_sets.sh fetch vendor <"$DIR"/sets_fixture_3_10_1_20250727
 
+# lockfiles that pin yanked versions (issue #26)
+echo "testing yanked crate versions" >&2
+"$DIR"/test_yanked.sh
+
 # less popular crates, with more dependencies, large test
 echo "testing fixture 2 (fetch+vendor, synthetic crates)" >&2
 "$DIR"/test_sets.sh fetch vendor <"$DIR"/sets_fixture_3_150_10_20250727

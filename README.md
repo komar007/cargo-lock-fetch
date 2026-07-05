@@ -124,3 +124,11 @@ dependencies, and this situation is perfectly correct for cargo packages if the 
 in indirectly by different dependencies, `cargo-lock-fetch` distributes the list of dependencies
 between sub-crates using an approach based on greedy vertex coloring, which is optimal for cluster
 graphs (there is an edge between 2 dependencies iff they are different versions of the same crate).
+
+`cargo-lock-fetch` also writes a `Cargo.lock` for the generated package, assembled from the
+package entries of the input lockfile. This matters when the input lockfile pins versions that
+have since been yanked from the registry: cargo refuses to select yanked versions when resolving
+a project from scratch, but versions already recorded in a lockfile are exempt, so fetching and
+vendoring keep working exactly like they do for the original project. Note that passing
+`--locked` or `--frozen` through to cargo may still fail: cargo is allowed to rewrite the
+generated lockfile around feature-dependent edges, which those flags forbid.
