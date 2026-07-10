@@ -4,6 +4,10 @@ on:
     branches:
       - main
   workflow_call:
+    inputs:
+      skip-examples:
+        type: boolean
+        default: false
 
 name: Check and Lint
 
@@ -53,6 +57,7 @@ jobs:
 
   build-example:
     name: Build example
+    if: ${{ !inputs.skip-examples }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
