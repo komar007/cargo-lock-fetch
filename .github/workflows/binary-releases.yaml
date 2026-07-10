@@ -8,7 +8,10 @@ permissions:
   contents: write
 
 jobs:
+  ci:
+    uses: ./.github/workflows/check-and-lint.yaml
   upload-assets:
+    needs: ci
     env:
       BIN_NAME: cargo-lock-fetch
     name: upload-assets (${{ matrix.os }} ${{ matrix.target }})

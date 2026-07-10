@@ -5,8 +5,11 @@ on:
     types: [ published ]
 
 jobs:
+  ci:
+    uses: ./.github/workflows/check-and-lint.yaml
   publish:
     name: "Publish to crates.io"
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
