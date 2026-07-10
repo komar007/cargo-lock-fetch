@@ -1,5 +1,49 @@
 # Changelog of `cargo-lock-fetch`
 
+## [0.2.1] - 2026-07-10
+
+### 🚀 Features
+
+- Add yanked version support (#30)
+
+### 🐛 Bug Fixes
+
+- Write registry index URLs in cargo config format
+- Remove clippy warning starting from rustc-1.97.0
+
+### 📚 Documentation
+
+- Added docker hub badge
+- Documented other installation methods (#23)
+- Documented intended semver guarantees
+- Added ToC
+- Fixed style
+- Added another docker example + setup example tests + fixed lock-fetch version in examples
+- Reduced dependencies in docker examples
+
+### 🧪 Testing
+
+- Remove core2 and all dependents from fixtures (unmaintained and all versions yanked)
+- Extend repo fixture
+
+### ⚙️ Miscellaneous Tasks
+
+- *(docker)* Fixed "v" stripping from tag name
+- Lock integration test toolchain to 1.95.0, because >= 1.96.0 is not supported yet
+- Set toolchain to default, not dir-override
+- Make sure to use toolchain installed by actions-rs/toolchain in all places
+- Update clippy-check action
+- Update github actions
+- Fix shellcheck lint
+- Revert to stable rust for integration tests after #28 is implemented
+- Update dependencies
+- Add --locked to cargo publish
+- Require check-and-lint in all release actions
+
+### Build
+
+- *(docker)* Lock bootstrapping cargo-lock-fetch to 0.2.0
+
 ## [0.2.0] - 2025-08-02
 
 This release is mainly about adding automatic binary releasing via github actions and some minor
