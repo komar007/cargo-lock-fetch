@@ -26,7 +26,7 @@ pub fn main(cli: &CargoLockFetchCli) -> Result<ExitCode, anyhow::Error> {
     env_logger::init();
 
     let lockfile = Lockfile::load(&cli.lockfile_path)
-        .with_context(|| format!("could not load lock file {}", &cli.lockfile_path))?;
+        .with_context(|| format!("could not load lock file {}", cli.lockfile_path))?;
     let resolve_version = lockfile.version;
 
     let dir: Box<dyn AsRef<Path>> = if let Some(ref dir) = cli.tmp_dir {
