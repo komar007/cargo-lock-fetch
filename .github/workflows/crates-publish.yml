@@ -4,6 +4,9 @@ on:
   release:
     types: [ published ]
 
+permissions:
+  checks: write
+
 jobs:
   ci:
     uses: ./.github/workflows/check-and-lint.yaml
