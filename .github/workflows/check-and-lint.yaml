@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+  workflow_call:
 
 name: Check and Lint
 

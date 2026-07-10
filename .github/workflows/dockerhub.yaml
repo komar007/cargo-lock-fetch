@@ -5,7 +5,10 @@ on:
       - published
 
 jobs:
+  ci:
+    uses: ./.github/workflows/check-and-lint.yaml
   docker:
+    needs: ci
     runs-on: ubuntu-latest
     env:
       BIN_NAME: cargo-lock-fetch
