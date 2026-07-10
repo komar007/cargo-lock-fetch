@@ -5,7 +5,7 @@ RUN apk update \
  && apk add --no-cache musl-dev
 
 # Use cargo-lock-fetch from its docker distribution
-COPY --from=komar007/cargo-lock-fetch:0.2.0 \
+COPY --from=komar007/cargo-lock-fetch:0.2.1 \
     /cargo-lock-fetch /usr/local/cargo/bin
 
 WORKDIR /app

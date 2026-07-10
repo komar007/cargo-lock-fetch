@@ -3,7 +3,7 @@ FROM rust:1.88.0-alpine3.22 AS builder
 # Tools layer
 RUN apk update \
  && apk add --no-cache musl-dev \
- && cargo install cargo-lock-fetch@0.2.0
+ && cargo install cargo-lock-fetch@0.2.1
 
 WORKDIR /app
 
