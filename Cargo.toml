@@ -14,19 +14,19 @@ categories = ["development-tools", "development-tools::cargo-plugins", "command-
 keywords = ["cli", "cargo", "dependencies", "lockfile", "registry"]
 
 [dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.103"
 cargo-lock = "10.1.0"
-clap-cargo = "0.16.0"
-clap = { version = "4.5.41", features = ["derive"] }
-env_logger = { version = "0.11.8", features = ["kv"] }
-indoc = "2.0.6"
-itertools = "0.14.0"
-log = { version = "0.4.27", features = ["kv", "kv_serde"] }
-shadow-rs = "1.2.1"
+clap-cargo = "0.18.3"
+clap = { version = "4.6.1", features = ["derive"] }
+env_logger = { version = "0.11.11", features = ["kv"] }
+indoc = "2.0.7"
+itertools = "0.15.0"
+log = { version = "0.4.33", features = ["kv", "kv_serde"] }
+shadow-rs = "2.0.0"
 temp-dir = "0.1.16"
-thiserror = "2.0.12"
-toml_edit = "0.23.2"
-unwrap-infallible = "0.1.5"
+thiserror = "2.0.18"
+toml_edit = "0.25.12"
+unwrap-infallible = "1.0.0"
 
 [build-dependencies]
-shadow-rs = "1.2.1"
+shadow-rs = "2.0.0"
